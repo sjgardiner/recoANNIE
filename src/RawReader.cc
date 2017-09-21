@@ -20,6 +20,15 @@ annie::RawReader::RawReader(const std::string& file_name)
   set_branch_addresses();
 }
 
+annie::RawReader::RawReader(const std::vector<std::string>& file_names)
+  : pmt_data_chain_("PMTData"), current_entry_(0)
+{
+  for (const auto& file_name : file_names)
+    pmt_data_chain_.Add( file_name.c_str() );
+
+  set_branch_addresses();
+}
+
 void annie::RawReader::set_branch_addresses() {
   pmt_data_chain_.SetBranchAddress("LastSync", &br_LastSync_);
   pmt_data_chain_.SetBranchAddress("SequenceID", &br_SequenceID_);

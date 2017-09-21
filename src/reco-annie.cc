@@ -1,5 +1,7 @@
 // standard library includes
 #include <iostream>
+#include <string>
+#include <vector>
 
 // reco-annie includes
 #include "annie/RawReader.hh"
@@ -11,7 +13,10 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  annie::RawReader reader(argv[1]);
+  std::vector<std::string> file_names;
+  for (int i = 1; i < argc; ++i) file_names.push_back( argv[i] );
+
+  annie::RawReader reader(file_names);
 
   while (auto out = reader.next()) {
     std::cout << out->sequence_id() << '\n';

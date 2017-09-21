@@ -23,7 +23,10 @@ namespace annie {
 
     public:
 
+      // Because we are using a TChain internally, the file name(s)
+      // passed to the constructors may contain wildcards.
       RawReader(const std::string& file_name);
+      RawReader(const std::vector<std::string>& file_names);
 
       std::unique_ptr<RawReadout> next();
 
