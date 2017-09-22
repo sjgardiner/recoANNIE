@@ -24,9 +24,11 @@ namespace annie {
       unsigned int rate() const { return rate_; }
       void set_rate( unsigned int r) { rate_ = r; }
 
-      const std::vector<short>& data() const { return data_; }
+      const std::vector<unsigned short>& data() const { return data_; }
 
       size_t num_minibuffers() const { return num_minibuffers_; }
+
+      std::vector<unsigned short> minibuffer_data(size_t mb_index) const;
 
     protected:
 
@@ -38,7 +40,7 @@ namespace annie {
       unsigned rate_;
 
       /// @brief Raw ADC counts from the full readout for this channel
-      std::vector<short> data_;
+      std::vector<unsigned short> data_;
 
       /// @brief The number of minibuffers recorded in this readout
       size_t num_minibuffers_;

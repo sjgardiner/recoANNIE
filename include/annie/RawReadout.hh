@@ -35,6 +35,12 @@ namespace annie {
       inline const annie::RawCard& card(int index) const
         { return cards_.at(index); }
 
+      inline const annie::RawChannel& channel(int card_index,
+        int channel_index)
+      {
+        return cards_.at(card_index).channel(channel_index);
+      }
+
     protected:
 
       /// @brief Integer index identifying this DAQ readout (unique within
