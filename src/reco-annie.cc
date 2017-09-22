@@ -30,9 +30,16 @@ int main(int argc, char* argv[]) {
       for (const auto& channel_pair : card.channels()) {
         const auto& channel = channel_pair.second;
 
-        std::cout << "cardID = " << card.card_id() << ", channel = "
-          << channel.channel_number() << ", baseline = "
-          << analyzer.ze3ra_baseline(channel) << '\n';
+        if (card.card_id() == 4 && channel.channel_id() == 1) {
+          std::vector<annie::RecoPulse> pulses
+            = analyzer.find_pulses(channel, 357);
+          std::cout << "Found " << pulses.size() << " pulses\n";
+          for (const auto& pulse : pulses) {
+            std::cout << "  amp = " << pulse.amplitude() * 1e3 << " mV,";
+            std::cout << " charge = " << pulse.charge() << " nC,";
+            std::cout << " start time = " << pulse.start_time() << " ns\n";
+          }
+        }
       }
     }
   }

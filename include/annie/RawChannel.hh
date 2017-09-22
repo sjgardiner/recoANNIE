@@ -18,8 +18,8 @@ namespace annie {
         const std::vector<unsigned short>::const_iterator data_end,
         unsigned int Rate, size_t MiniBufferCount);
 
-      unsigned int channel_number() const { return channel_number_; }
-      void set_channel_number( unsigned int cn) { channel_number_ = cn; }
+      unsigned int channel_id() const { return channel_id_; }
+      void set_channel_id( unsigned int cn) { channel_id_ = cn; }
 
       unsigned int rate() const { return rate_; }
       void set_rate( unsigned int r) { rate_ = r; }
@@ -34,7 +34,7 @@ namespace annie {
 
       /// @brief The index of this channel in the full waveform buffer
       /// of its VME card
-      unsigned channel_number_;
+      unsigned channel_id_;
 
       /// @brief The rate for this channel
       unsigned rate_;

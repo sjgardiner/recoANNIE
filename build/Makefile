@@ -83,7 +83,7 @@ ifneq ($(MAKECMDGOALS),uninstall)
       ROOT_LDFLAGS += -rdynamic
     endif
     ROOT_DICT_INCLUDES := -I$(INCLUDE_DIR) annie/RawChannel.hh \
-      annie/RawCard.hh annie/RawReadout.hh
+      annie/RawCard.hh annie/RawReadout.hh annie/RecoPulse.hh
     ROOT_OBJ_DICT = recoANNIE_dict.o
     ROOT_OBJECTS = $(ROOT_OBJ_DICT)
   

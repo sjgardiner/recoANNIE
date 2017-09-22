@@ -4,6 +4,12 @@
 // Steven Gardiner <sjgardiner@ucdavis.edu>
 #pragma once
 
+// standard library includes
+#include <vector>
+
+// reco-annie includes
+#include "annie/RecoPulse.hh"
+
 namespace annie {
 
   // Forward-declare the RawChannel class
@@ -31,19 +37,26 @@ namespace annie {
       /// RawAnalyzer
       static const RawAnalyzer& Instance();
 
-      /// @brief Compute the baseline for a particular RawChannel
-      /// object using a technique taken from the ZE3RA code.
-      /// @details See section 2.2 of https://arxiv.org/pdf/1106.0808.pdf for a
-      /// full description of the algorithm.
-      double ze3ra_baseline(const annie::RawChannel& channel) const;
+      std::vector<RecoPulse> find_pulses(const annie::RawChannel& channel,
+        unsigned short adc_threshold) const;
 
     protected:
 
       /// @brief Create the singleton RawAnalyzer object
       RawAnalyzer();
 
-    //private:
+      // The default number of samples to use when computing the baseline
+      // for each minibuffer (or each pre-trigger subregion in non-Hefty mode)
+      // using the ZE3RA method
+      static constexpr size_t DEFAULT_NUM_BASELINE_SAMPLES = 25;
 
+      /// @brief Compute the baseline for a particular RawChannel
+      /// object using a technique taken from the ZE3RA code.
+      /// @details See section 2.2 of https://arxiv.org/pdf/1106.0808.pdf for a
+      /// full description of the algorithm.
+      void ze3ra_baseline(const annie::RawChannel& channel, double& baseline,
+        double& sigma_baseline, size_t num_baseline_samples
+        = DEFAULT_NUM_BASELINE_SAMPLES) const;
   };
 
 }
