@@ -3,6 +3,10 @@
 #include <string>
 #include <vector>
 
+// ROOT includes
+#include "TFile.h"
+#include "TTree.h"
+
 // reco-annie includes
 #include "annie/RawAnalyzer.hh"
 #include "annie/RawReader.hh"
@@ -10,13 +14,23 @@
 
 int main(int argc, char* argv[]) {
 
-  if (argc < 2) {
-    std::cout << "Usage: reco-annie INPUT_FILE...\n";
+  if (argc < 3) {
+    std::cout << "Usage: reco-annie OUTPUT_FILE INPUT_FILE...\n";
     return 1;
   }
 
+  TFile out_file(argv[1], "recreate");
+  TTree* out_tree = new TTree("pulse_tree", "recoANNIE pulse tree");
+
+  const annie::RecoPulse* pulse_ptr = nullptr;
+  int card_id = 0;
+  int channel_id = 0;
+  out_tree->Branch("pulse", "annie::RecoPulse", &pulse_ptr);
+  out_tree->Branch("card_id", &card_id, "card_id/I");
+  out_tree->Branch("channel_id", &channel_id, "channel_id/I");
+
   std::vector<std::string> file_names;
-  for (int i = 1; i < argc; ++i) file_names.push_back( argv[i] );
+  for (int i = 2; i < argc; ++i) file_names.push_back( argv[i] );
 
   annie::RawReader reader(file_names);
 
@@ -30,19 +44,28 @@ int main(int argc, char* argv[]) {
       for (const auto& channel_pair : card.channels()) {
         const auto& channel = channel_pair.second;
 
-        if (card.card_id() == 4 && channel.channel_id() == 1) {
-          std::vector<annie::RecoPulse> pulses
-            = analyzer.find_pulses(channel, 357);
-          std::cout << "Found " << pulses.size() << " pulses\n";
-          for (const auto& pulse : pulses) {
-            std::cout << "  amp = " << pulse.amplitude() * 1e3 << " mV,";
-            std::cout << " charge = " << pulse.charge() << " nC,";
-            std::cout << " start time = " << pulse.start_time() << " ns\n";
-          }
+        card_id = card_pair.first;
+        channel_id = channel_pair.first;
+
+        if ( !(card_id == 18 && channel_id == 0)
+          && !(card_id == 4 && channel_id == 1) ) continue;
+        std::vector<annie::RecoPulse> pulses
+          = analyzer.find_pulses(channel, 357);
+        std::cout << "Found " << pulses.size() << " pulses\n";
+        for (const auto& pulse : pulses) {
+          std::cout << "  amp = " << pulse.amplitude() * 1e3 << " mV,";
+          std::cout << " charge = " << pulse.charge() << " nC,";
+          std::cout << " start time = " << pulse.start_time() << " ns\n";
+
+          pulse_ptr = &pulse;
+          out_tree->Fill();
         }
       }
     }
   }
+
+  out_tree->Write();
+  out_file.Close();
 
   return 0;
 }
