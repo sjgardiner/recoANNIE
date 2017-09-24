@@ -151,6 +151,9 @@ std::vector<annie::RecoPulse> annie::RawAnalyzer::find_pulses(
 {
   std::vector<annie::RecoPulse> pulses;
 
+  unsigned short baseline_plus_one_sigma = static_cast<unsigned short>(
+    std::round(baseline + sigma_baseline));
+
   size_t pulse_start_sample = BOGUS_INT;
   size_t pulse_end_sample = BOGUS_INT;
 
@@ -166,7 +169,9 @@ std::vector<annie::RecoPulse> annie::RawAnalyzer::find_pulses(
     // TODO: consider whether you should force a pulse to end
     // if you reach the end of the minibuffer (note that you
     // only store pulses that have a defined endpoint)
-    else if ( in_pulse && minibuffer_waveform[s] < adc_threshold ) {
+    else if ( in_pulse && ((minibuffer_waveform[s] < baseline_plus_one_sigma)
+      || (s == num_samples - 1)) )
+    {
       in_pulse = false;
       pulse_end_sample = s;
 
