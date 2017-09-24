@@ -8,7 +8,9 @@
 #include <vector>
 
 // reco-annie includes
+#include "annie/RawReadout.hh"
 #include "annie/RecoPulse.hh"
+#include "annie/RecoReadout.hh"
 
 namespace annie {
 
@@ -39,6 +41,15 @@ namespace annie {
 
       std::vector<RecoPulse> find_pulses(const annie::RawChannel& channel,
         unsigned short adc_threshold) const;
+
+      std::vector<annie::RecoPulse> find_pulses(
+        const std::vector<unsigned short>& minibuffer_waveform,
+        double baseline, double sigma_baseline, unsigned short adc_threshold)
+        const;
+
+      std::unique_ptr<annie::RecoReadout> find_pulses(
+        const annie::RawReadout& raw_readout, unsigned short adc_threshold)
+        const;
 
     protected:
 

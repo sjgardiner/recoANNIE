@@ -8,7 +8,9 @@
 #include "annie/annie_math.hh"
 #include "annie/Constants.hh"
 #include "annie/RawAnalyzer.hh"
+#include "annie/RawCard.hh"
 #include "annie/RawChannel.hh"
+#include "annie/RawReadout.hh"
 
 // Anonymous namespace for definitions local to this source file
 namespace {
@@ -144,6 +146,66 @@ void annie::RawAnalyzer::ze3ra_baseline(const annie::RawChannel& channel,
 }
 
 std::vector<annie::RecoPulse> annie::RawAnalyzer::find_pulses(
+  const std::vector<unsigned short>& minibuffer_waveform,
+  double baseline, double sigma_baseline, unsigned short adc_threshold) const
+{
+  std::vector<annie::RecoPulse> pulses;
+
+  size_t pulse_start_sample = BOGUS_INT;
+  size_t pulse_end_sample = BOGUS_INT;
+
+  size_t num_samples = minibuffer_waveform.size();
+
+  bool in_pulse = false;
+
+  for (size_t s = 0; s < num_samples; ++s) {
+    if ( !in_pulse && minibuffer_waveform[s] > adc_threshold ) {
+      in_pulse = true;
+      pulse_start_sample = s;
+    }
+    // TODO: consider whether you should force a pulse to end
+    // if you reach the end of the minibuffer (note that you
+    // only store pulses that have a defined endpoint)
+    else if ( in_pulse && minibuffer_waveform[s] < adc_threshold ) {
+      in_pulse = false;
+      pulse_end_sample = s;
+
+      // Integrate the pulse to get its area. Use a Riemann sum. Also get
+      // the raw amplitude (maximum ADC value within the pulse) and the
+      // sample at which the peak occurs.
+      unsigned long raw_area = 0; // ADC * samples
+      unsigned short max_ADC = std::numeric_limits<unsigned short>::lowest();
+      size_t peak_sample = BOGUS_INT;
+      for (size_t p = pulse_start_sample; p <= pulse_end_sample; ++p) {
+        raw_area += minibuffer_waveform[p];
+        if (max_ADC < minibuffer_waveform[p]) {
+          max_ADC = minibuffer_waveform[p];
+          peak_sample = p;
+        }
+      }
+
+      // The amplitude of this pulse (V)
+      double calibrated_amplitude = (max_ADC - baseline) * ADC_TO_VOLT;
+
+      // The charge detected in this pulse (nC)
+      double charge = (raw_area - baseline*(pulse_end_sample
+        - pulse_start_sample)) * ADC_TO_VOLT * NS_PER_SAMPLE / IMPEDANCE;
+
+      // TODO: consider adding code to merge pulses if they occur
+      // very close together (the end of one is just a few samples away
+      // from the start of another)
+
+      // Store the freshly made pulse in the vector of found pulses
+      pulses.emplace_back(pulse_start_sample * NS_PER_SAMPLE,
+        peak_sample * NS_PER_SAMPLE, baseline, sigma_baseline,
+        raw_area, max_ADC, calibrated_amplitude, charge);
+    }
+  }
+
+  return pulses;
+}
+
+std::vector<annie::RecoPulse> annie::RawAnalyzer::find_pulses(
   const annie::RawChannel& channel, unsigned short adc_threshold) const
 {
   std::vector<annie::RecoPulse> pulses;
@@ -153,61 +215,53 @@ std::vector<annie::RecoPulse> annie::RawAnalyzer::find_pulses(
   double baseline, sigma_baseline;
   ze3ra_baseline(channel, baseline, sigma_baseline);
 
-  bool in_pulse = false;
-  size_t pulse_start_sample = BOGUS_INT;
-  size_t pulse_end_sample = BOGUS_INT;
-
   // Search for pulses within minibuffers, not the full buffer in Hefty mode
-  // TODO: optimize this using iterators to portions of the full buffer
-  // rather than making a copy of the minibuffer data
   for (size_t mb = 0; mb < channel.num_minibuffers(); ++mb) {
     const auto& data = channel.minibuffer_data(mb);
-    size_t num_samples = data.size();
 
-    for (size_t s = 0; s < num_samples; ++s) {
-      if ( !in_pulse && data[s] > adc_threshold ) {
-        in_pulse = true;
-        pulse_start_sample = s;
-      }
-      // TODO: consider whether you should force a pulse to end
-      // if you reach the end of the minibuffer (note that you
-      // only store pulses that have a defined endpoint)
-      else if ( in_pulse && data[s] < adc_threshold ) {
-        in_pulse = false;
-        pulse_end_sample = s;
+    std::vector<annie::RecoPulse> pulses_in_minibuffer = find_pulses(data,
+      baseline, sigma_baseline, adc_threshold);
 
-        // Integrate the pulse to get its area. Use a Riemann sum. Also get
-        // the raw amplitude (maximum ADC value within the pulse) and the
-        // sample at which the peak occurs.
-        unsigned long raw_area = 0; // ADC * samples
-        unsigned short max_ADC = std::numeric_limits<unsigned short>::lowest();
-        size_t peak_sample = BOGUS_INT;
-        for (size_t p = pulse_start_sample; p <= pulse_end_sample; ++p) {
-          raw_area += data[p];
-          if (max_ADC < data[p]) {
-            max_ADC = data[p];
-            peak_sample = p;
-          }
-        }
+    for (const auto& pulse : pulses_in_minibuffer) pulses.push_back(pulse);
+  }
 
-        // The amplitude of this pulse (V)
-        double calibrated_amplitude = (max_ADC - baseline) * ADC_TO_VOLT;
+  return pulses;
+}
 
-        // The charge detected in this pulse (nC)
-        double charge = (raw_area - baseline*(pulse_end_sample
-          - pulse_start_sample)) * ADC_TO_VOLT * NS_PER_SAMPLE / IMPEDANCE;
+std::unique_ptr<annie::RecoReadout> annie::RawAnalyzer::find_pulses(
+  const annie::RawReadout& raw_readout, unsigned short adc_threshold) const
+{
+  auto reco_readout = std::make_unique<annie::RecoReadout>(
+    raw_readout.sequence_id());
 
-        // TODO: consider adding code to merge pulses if they occur
-        // very close together (the end of one is just a few samples away
-        // from the start of another)
+  for (const auto& card_pair : raw_readout.cards()) {
+    const auto& card = card_pair.second;
+    for (const auto& channel_pair : card.channels()) {
+      const auto& channel = channel_pair.second;
 
-        // Store the freshly made pulse in the vector of found pulses
-        pulses.emplace_back(pulse_start_sample * NS_PER_SAMPLE,
-          peak_sample * NS_PER_SAMPLE, baseline, sigma_baseline,
-          raw_area, max_ADC, calibrated_amplitude, charge);
+      int card_id = card_pair.first;
+      int channel_id = channel_pair.first;
+
+      // NCV PMTs only (for now)
+      // TODO: expand this to include all PMTs
+      if ( !(card_id == 18 && channel_id == 0)
+        && !(card_id == 4 && channel_id == 1) ) continue;
+
+      // Get estimates for the mean and standard deviation of the baseline in
+      // ADC counts
+      double baseline, sigma_baseline;
+      ze3ra_baseline(channel, baseline, sigma_baseline);
+
+      // Search for pulses within minibuffers, not the full buffer in Hefty
+      // mode
+      for (size_t mb = 0; mb < channel.num_minibuffers(); ++mb) {
+        const auto& data = channel.minibuffer_data(mb);
+        auto found_pulses = find_pulses(data, baseline, sigma_baseline,
+          adc_threshold);
+        reco_readout->add_pulses( card_id, channel_id, mb, found_pulses);
       }
     }
   }
 
-  return pulses;
+  return reco_readout;
 }

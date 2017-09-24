@@ -9,4 +9,9 @@
 #pragma link C++ class annie::RawCard+;
 #pragma link C++ class annie::RawReadout+;
 #pragma link C++ class annie::RawReader+;
+#pragma link C++ class std::vector<annie::RecoPulse>+;
+#pragma link C++ class std::map<int, std::vector<annie::RecoPulse> >+;
+#pragma link C++ class std::map<int, std::map<int, std::vector<annie::RecoPulse> > >+;
+#pragma link C++ class std::map<int, std::map<int, std::map<int, std::vector<annie::RecoPulse> > >+;
+#pragma link C++ class annie::RecoReadout+;
 #endif
