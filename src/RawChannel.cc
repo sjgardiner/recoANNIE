@@ -4,28 +4,35 @@
 // reco-annie includes
 #include "annie/RawChannel.hh"
 
+// The raw channel data are stored out of order (half at the beginning and half
+// midway through the channel buffer) so use an iterator to the start and an
+// iterator at the halfway point to put the samples in order.
 annie::RawChannel::RawChannel(int ChannelNumber,
   const std::vector<unsigned short>::const_iterator data_begin,
-  const std::vector<unsigned short>::const_iterator data_end,
+  const std::vector<unsigned short>::const_iterator data_halfway,
   unsigned int Rate, size_t MiniBufferCount) : channel_id_(ChannelNumber),
-  rate_(Rate), data_(data_begin, data_end), num_minibuffers_(MiniBufferCount)
+  rate_(Rate)
 {
+  size_t half_minibuffer_length = std::distance(data_begin, data_halfway)
+    / MiniBufferCount;
+
+  for (size_t mb = 0; mb < MiniBufferCount; ++mb) {
+    data_.emplace_back(); // Create a new empty minibuffer
+
+    for (size_t s = 0; s < half_minibuffer_length; s += 2) {
+      data_.back().push_back( *(data_begin + s) );
+      data_.back().push_back( *(data_begin + s + 1) );
+      data_.back().push_back( *(data_halfway + s) );
+      data_.back().push_back( *(data_halfway + s + 1) );
+    }
+  }
 }
 
-std::vector<unsigned short> annie::RawChannel::minibuffer_data(size_t mb_index)
-  const
+const std::vector<unsigned short>& annie::RawChannel::minibuffer_data(
+  size_t mb_index) const
 {
-  if (mb_index >= num_minibuffers_) throw std::runtime_error("MiniBuffer index"
+  if (mb_index >= data_.size()) throw std::runtime_error("MiniBuffer index"
     " out-of-range in annie::RawChannel::minibuffer_data()");
 
-  size_t mb_size = data_.size() / num_minibuffers_;
-
-  size_t start_index = mb_size * mb_index;
-  size_t end_index = mb_size * (mb_index + 1);
-
-  const auto& begin = data_.cbegin() + start_index;
-  const auto& end = data_.cbegin() + end_index;
-
-  std::vector<unsigned short> mb_data(begin, end);
-  return mb_data;
+  return data_.at(mb_index);
 }

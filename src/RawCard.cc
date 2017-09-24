@@ -47,9 +47,11 @@ void annie::RawCard::add_channel(int channel_number,
       "::add_channel()");
   }
 
-  auto begin = full_buffer_data.cbegin();
+  // The channel data are stored out of order (half at the beginning and
+  // half midway through) so get iterators to both starting locations
+  auto channel_begin = full_buffer_data.cbegin() + start_index;
+  auto channel_halfway = channel_begin + channel_buffer_size / 2;
   channels_.emplace( std::make_pair(channel_number,
-    annie::RawChannel(channel_number, begin + start_index, begin + end_index,
+    annie::RawChannel(channel_number, channel_begin, channel_halfway,
     rate, trigger_counts_.size())) );
 }
-
