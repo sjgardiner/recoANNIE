@@ -229,7 +229,7 @@ std::vector<annie::RecoPulse> annie::RawAnalyzer::find_pulses(
 }
 
 std::unique_ptr<annie::RecoReadout> annie::RawAnalyzer::find_pulses(
-  const annie::RawReadout& raw_readout, unsigned short adc_threshold) const
+  const annie::RawReadout& raw_readout) const
 {
   auto reco_readout = std::make_unique<annie::RecoReadout>(
     raw_readout.sequence_id());
@@ -242,15 +242,16 @@ std::unique_ptr<annie::RecoReadout> annie::RawAnalyzer::find_pulses(
       int card_id = card_pair.first;
       int channel_id = channel_pair.first;
 
-      // NCV PMTs only (for now)
-      // TODO: expand this to include all PMTs
-      if ( !(card_id == 18 && channel_id == 0)
-        && !(card_id == 4 && channel_id == 1) ) continue;
-
       // Get estimates for the mean and standard deviation of the baseline in
       // ADC counts
       double baseline, sigma_baseline;
       ze3ra_baseline(channel, baseline, sigma_baseline);
+
+      // TODO: Do something better here
+      unsigned short adc_threshold = static_cast<unsigned short>(
+        std::round(baseline) ) + 7; // baseline + roughly 4.1 mV
+      if ( (card_id == 18 && channel_id == 0)
+        || (card_id == 4 && channel_id == 1) ) adc_threshold = 357; // Hefty
 
       // Search for pulses within minibuffers, not the full buffer in Hefty
       // mode

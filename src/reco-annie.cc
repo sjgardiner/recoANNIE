@@ -45,31 +45,35 @@ int main(int argc, char* argv[]) {
     std::cout << "Sequence ID = " << readout->sequence_id() << '\n';
 
     readout_ptr = readout.get();
-    readout_tree->Fill();
+    //readout_tree->Fill();
 
-    for (const auto& card_pair : readout->cards()) {
-      const auto& card = card_pair.second;
-      for (const auto& channel_pair : card.channels()) {
-        const auto& channel = channel_pair.second;
+    auto reco_readout = analyzer.find_pulses(*readout);
 
-        card_id = card_pair.first;
-        channel_id = channel_pair.first;
+    std::cout << reco_readout->tank_charge(0) << " nC\n";
 
-        if ( !(card_id == 18 && channel_id == 0)
-          && !(card_id == 4 && channel_id == 1) ) continue;
-        std::vector<annie::RecoPulse> pulses
-          = analyzer.find_pulses(channel, 357);
-        std::cout << "Found " << pulses.size() << " pulses\n";
-        for (const auto& pulse : pulses) {
-          std::cout << "  amp = " << pulse.amplitude() * 1e3 << " mV,";
-          std::cout << " charge = " << pulse.charge() << " nC,";
-          std::cout << " start time = " << pulse.start_time() << " ns\n";
+    //for (const auto& card_pair : readout->cards()) {
+    //  const auto& card = card_pair.second;
+    //  for (const auto& channel_pair : card.channels()) {
+    //    const auto& channel = channel_pair.second;
 
-          pulse_ptr = &pulse;
-          out_tree->Fill();
-        }
-      }
-    }
+    //    card_id = card_pair.first;
+    //    channel_id = channel_pair.first;
+
+    //    if ( !(card_id == 18 && channel_id == 0)
+    //      && !(card_id == 4 && channel_id == 1) ) continue;
+    //    std::vector<annie::RecoPulse> pulses
+    //      = analyzer.find_pulses(channel, 357);
+    //    std::cout << "Found " << pulses.size() << " pulses\n";
+    //    for (const auto& pulse : pulses) {
+    //      std::cout << "  amp = " << pulse.amplitude() * 1e3 << " mV,";
+    //      std::cout << " charge = " << pulse.charge() << " nC,";
+    //      std::cout << " start time = " << pulse.start_time() << " ns\n";
+
+    //      pulse_ptr = &pulse;
+    //      out_tree->Fill();
+    //    }
+    //  }
+    //}
   }
 
   out_tree->Write();

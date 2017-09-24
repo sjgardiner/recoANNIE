@@ -48,8 +48,7 @@ namespace annie {
         const;
 
       std::unique_ptr<annie::RecoReadout> find_pulses(
-        const annie::RawReadout& raw_readout, unsigned short adc_threshold)
-        const;
+        const annie::RawReadout& raw_readout) const;
 
     protected:
 
