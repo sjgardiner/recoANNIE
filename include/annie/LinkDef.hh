@@ -8,4 +8,5 @@
 #pragma link C++ class annie::RawChannel+;
 #pragma link C++ class annie::RawCard+;
 #pragma link C++ class annie::RawReadout+;
+#pragma link C++ class annie::RawReader+;
 #endif
