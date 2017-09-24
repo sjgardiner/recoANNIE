@@ -29,6 +29,11 @@ int main(int argc, char* argv[]) {
   out_tree->Branch("card_id", &card_id, "card_id/I");
   out_tree->Branch("channel_id", &channel_id, "channel_id/I");
 
+  TTree* readout_tree = new TTree("readout_tree", "recoANNIE RawReadout tree");
+  const annie::RawReadout* readout_ptr = nullptr;
+  readout_tree->Branch("readout", "annie::RawReadout", &readout_ptr);
+
+
   std::vector<std::string> file_names;
   for (int i = 2; i < argc; ++i) file_names.push_back( argv[i] );
 
@@ -38,6 +43,9 @@ int main(int argc, char* argv[]) {
 
   while (auto readout = reader.next()) {
     std::cout << "Sequence ID = " << readout->sequence_id() << '\n';
+
+    readout_ptr = readout.get();
+    readout_tree->Fill();
 
     for (const auto& card_pair : readout->cards()) {
       const auto& card = card_pair.second;
@@ -65,6 +73,8 @@ int main(int argc, char* argv[]) {
   }
 
   out_tree->Write();
+  readout_tree->Write();
+
   out_file.Close();
 
   return 0;

@@ -3,5 +3,9 @@
 #ifdef __MAKECINT__
 #pragma link C++ nestedclasses;
 #pragma link C++ nestedtypedefs;
+#pragma link C++ class std::vector< std::vector<unsigned short> >+;
 #pragma link C++ class annie::RecoPulse+;
+#pragma link C++ class annie::RawChannel+;
+#pragma link C++ class annie::RawCard+;
+#pragma link C++ class annie::RawReadout+;
 #endif

@@ -16,6 +16,8 @@ namespace annie {
 
     public:
 
+      RawCard() {}
+
       RawCard(int CardID, unsigned long long LastSync, int StartTimeSec,
         int StartTimeNSec, unsigned long long StartCount, int Channels,
         int BufferSize, int MiniBufferSize,
@@ -28,7 +30,7 @@ namespace annie {
       inline const std::map<int, annie::RawChannel>& channels() const
         { return channels_; }
 
-      inline const annie::RawChannel& channel(int index)
+      inline const annie::RawChannel& channel(int index) const
         { return channels_.at(index); }
 
     protected:
