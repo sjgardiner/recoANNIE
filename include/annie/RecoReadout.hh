@@ -31,6 +31,8 @@ namespace annie {
       const std::map<int, std::map<int, std::map<int,
         std::vector<annie::RecoPulse> > > >& pulses() const { return pulses_; }
 
+      double tank_charge(int minibuffer_number) const;
+
     protected:
 
       // @brief Integer identifier for this readout that is unique within a run
