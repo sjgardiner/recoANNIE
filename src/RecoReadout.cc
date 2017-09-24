@@ -76,7 +76,9 @@ const std::vector<annie::RecoPulse>& annie::RecoReadout::get_pulses(
   return pulses_.at(card_number).at(channel_number).at(minibuffer_number);
 }
 
-double annie::RecoReadout::tank_charge(int minibuffer_number) const {
+double annie::RecoReadout::tank_charge(int minibuffer_number,
+  size_t start_time, size_t end_time) const
+{
   double tank_charge = 0.;
 
   for (const auto& card_pair : pulses_) {
@@ -99,7 +101,9 @@ double annie::RecoReadout::tank_charge(int minibuffer_number) const {
       const auto& minibuffer_map = channel_pair.second;
 
       for ( const auto& pulse : minibuffer_map.at(minibuffer_number) ) {
-        tank_charge += pulse.charge();
+        size_t pulse_time = pulse.start_time();
+        if ( pulse_time >= start_time && pulse_time <= end_time)
+          tank_charge += pulse.charge();
       }
     }
   }

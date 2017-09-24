@@ -11,6 +11,8 @@
 #include "annie/RawAnalyzer.hh"
 #include "annie/RawReader.hh"
 #include "annie/RawReadout.hh"
+#include "annie/RecoPulse.hh"
+#include "annie/RecoReadout.hh"
 
 int main(int argc, char* argv[]) {
 
@@ -25,13 +27,22 @@ int main(int argc, char* argv[]) {
   const annie::RecoPulse* pulse_ptr = nullptr;
   int card_id = 0;
   int channel_id = 0;
+  int sequence_id = 0;
   out_tree->Branch("pulse", "annie::RecoPulse", &pulse_ptr);
   out_tree->Branch("card_id", &card_id, "card_id/I");
   out_tree->Branch("channel_id", &channel_id, "channel_id/I");
+  out_tree->Branch("sequence_id", &sequence_id, "sequence_id/I");
 
-  TTree* readout_tree = new TTree("readout_tree", "recoANNIE RawReadout tree");
-  const annie::RawReadout* readout_ptr = nullptr;
-  readout_tree->Branch("readout", "annie::RawReadout", &readout_ptr);
+  TTree* reco_readout_tree = new TTree("reco_readout_tree",
+    "recoANNIE RecoReadout tree");
+  const annie::RecoReadout* reco_readout_ptr = nullptr;
+  reco_readout_tree->Branch("reco_readout", "annie::RecoReadout",
+    &reco_readout_ptr);
+
+  TTree* tank_charge_tree = new TTree("tank_charge_tree", "recoANNIE tank"
+    " charge tree");
+  double tank_charge = 0.;
+  tank_charge_tree->Branch("tank_charge", &tank_charge, "tank_charge/D");
 
 
   std::vector<std::string> file_names;
@@ -44,40 +55,37 @@ int main(int argc, char* argv[]) {
   while (auto readout = reader.next()) {
     std::cout << "Sequence ID = " << readout->sequence_id() << '\n';
 
-    readout_ptr = readout.get();
-    //readout_tree->Fill();
-
     auto reco_readout = analyzer.find_pulses(*readout);
 
-    std::cout << reco_readout->tank_charge(0) << " nC\n";
+    reco_readout_ptr = reco_readout.get();
+    reco_readout_tree->Fill();
 
-    //for (const auto& card_pair : readout->cards()) {
-    //  const auto& card = card_pair.second;
-    //  for (const auto& channel_pair : card.channels()) {
-    //    const auto& channel = channel_pair.second;
+    const auto& ncv1_pulses = reco_readout->get_pulses(4, 1, 0);
+    std::cout << "Found " << ncv1_pulses.size() << " pulses on NCV PMT #1\n";
+    for (const auto& pulse : ncv1_pulses) {
+      tank_charge = reco_readout->tank_charge(0, pulse.start_time(),
+        pulse.start_time() + 100);
+      std::cout << "  start time = " << pulse.start_time() << ", amp = "
+        << pulse.amplitude() << ", charge = " << pulse.charge()
+        << ", tank charge = " << tank_charge << " nC\n";
+      tank_charge_tree->Fill();
+     }
 
-    //    card_id = card_pair.first;
-    //    channel_id = channel_pair.first;
-
-    //    if ( !(card_id == 18 && channel_id == 0)
-    //      && !(card_id == 4 && channel_id == 1) ) continue;
-    //    std::vector<annie::RecoPulse> pulses
-    //      = analyzer.find_pulses(channel, 357);
-    //    std::cout << "Found " << pulses.size() << " pulses\n";
-    //    for (const auto& pulse : pulses) {
-    //      std::cout << "  amp = " << pulse.amplitude() * 1e3 << " mV,";
-    //      std::cout << " charge = " << pulse.charge() << " nC,";
-    //      std::cout << " start time = " << pulse.start_time() << " ns\n";
-
-    //      pulse_ptr = &pulse;
-    //      out_tree->Fill();
-    //    }
-    //  }
-    //}
+    const auto& ncv2_pulses = reco_readout->get_pulses(18, 0, 0);
+    std::cout << "Found " << ncv2_pulses.size() << " pulses on NCV PMT #2\n";
+    for (const auto& pulse : ncv2_pulses) {
+      tank_charge = reco_readout->tank_charge(0, pulse.start_time(),
+        pulse.start_time() + 100);
+      std::cout << "  start time = " << pulse.start_time() << ", amp = "
+        << pulse.amplitude() << ", charge = " << pulse.charge()
+        << ", tank charge = " << tank_charge << " nC\n";
+      tank_charge_tree->Fill();
+     }
   }
 
   out_tree->Write();
-  readout_tree->Write();
+  reco_readout_tree->Write();
+  tank_charge_tree->Write();
 
   out_file.Close();
 

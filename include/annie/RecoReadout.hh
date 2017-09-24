@@ -31,7 +31,11 @@ namespace annie {
       const std::map<int, std::map<int, std::map<int,
         std::vector<annie::RecoPulse> > > >& pulses() const { return pulses_; }
 
-      double tank_charge(int minibuffer_number) const;
+      // Compute the "tank charge" in a given minibuffer within a time
+      // window with endpoints given in ns relative to the start of the
+      // minibuffer.
+      double tank_charge(int minibuffer_number, size_t start_time,
+        size_t end_time) const;
 
     protected:
 
