@@ -33,9 +33,10 @@ namespace annie {
 
       // Compute the "tank charge" in a given minibuffer within a time
       // window with endpoints given in ns relative to the start of the
-      // minibuffer.
+      // minibuffer. Also load num_unique_pmts with the number of unique
+      // water PMTs that recorded hits in the given time window.
       double tank_charge(int minibuffer_number, size_t start_time,
-        size_t end_time) const;
+        size_t end_time, int& num_unique_water_pmts) const;
 
     protected:
 

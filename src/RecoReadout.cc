@@ -76,10 +76,14 @@ const std::vector<annie::RecoPulse>& annie::RecoReadout::get_pulses(
   return pulses_.at(card_number).at(channel_number).at(minibuffer_number);
 }
 
+// Returns the integrated tank charge in a given time window.
+// Also loads the integer num_unique_water_pmts with the number
+// of hit water tank PMTs.
 double annie::RecoReadout::tank_charge(int minibuffer_number,
-  size_t start_time, size_t end_time) const
+  size_t start_time, size_t end_time, int& num_unique_water_pmts) const
 {
   double tank_charge = 0.;
+  num_unique_water_pmts = 0;
 
   for (const auto& card_pair : pulses_) {
     // Skip cards that do not receive data from any water tank PMTs
@@ -100,10 +104,24 @@ double annie::RecoReadout::tank_charge(int minibuffer_number,
 
       const auto& minibuffer_map = channel_pair.second;
 
-      for ( const auto& pulse : minibuffer_map.at(minibuffer_number) ) {
+      // If there were pulses found on the current channel, increment
+      // the number of unique hit water PMTs
+      const auto& pulse_vec = minibuffer_map.at(minibuffer_number);
+
+      bool found_pulse_in_time_window = false;
+
+      for ( const auto& pulse : pulse_vec ) {
         size_t pulse_time = pulse.start_time();
-        if ( pulse_time >= start_time && pulse_time <= end_time)
+        if ( pulse_time >= start_time && pulse_time <= end_time) {
+
+          // Add the unique hit PMT counter if the current pulse is within
+          // the given time window (and we hadn't already)
+          if (!found_pulse_in_time_window) {
+            ++num_unique_water_pmts;
+            found_pulse_in_time_window = true;
+          }
           tank_charge += pulse.charge();
+        }
       }
     }
   }

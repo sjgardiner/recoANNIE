@@ -14,6 +14,8 @@
 #include "annie/RecoPulse.hh"
 #include "annie/RecoReadout.hh"
 
+constexpr size_t TANK_CHARGE_TIME_WINDOW = 40; // ns
+
 int main(int argc, char* argv[]) {
 
   if (argc < 3) {
@@ -42,8 +44,10 @@ int main(int argc, char* argv[]) {
   TTree* tank_charge_tree = new TTree("tank_charge_tree", "recoANNIE tank"
     " charge tree");
   double tank_charge = 0.;
+  int num_unique_pmts = 0;
   tank_charge_tree->Branch("tank_charge", &tank_charge, "tank_charge/D");
-
+  tank_charge_tree->Branch("num_unique_pmts", &num_unique_pmts,
+    "num_unique_pmts/I");
 
   std::vector<std::string> file_names;
   for (int i = 2; i < argc; ++i) file_names.push_back( argv[i] );
@@ -53,33 +57,47 @@ int main(int argc, char* argv[]) {
   const auto& analyzer = annie::RawAnalyzer::Instance();
 
   while (auto readout = reader.next()) {
-    std::cout << "Sequence ID = " << readout->sequence_id() << '\n';
+
+    sequence_id = readout->sequence_id();
+    std::cout << "Sequence ID = " << sequence_id << '\n';
 
     auto reco_readout = analyzer.find_pulses(*readout);
 
     reco_readout_ptr = reco_readout.get();
     reco_readout_tree->Fill();
 
-    const auto& ncv1_pulses = reco_readout->get_pulses(4, 1, 0);
+    // NCV PMT #1
+    card_id = 4;
+    channel_id = 1;
+    const auto& ncv1_pulses = reco_readout->get_pulses(card_id, channel_id, 0);
     std::cout << "Found " << ncv1_pulses.size() << " pulses on NCV PMT #1\n";
     for (const auto& pulse : ncv1_pulses) {
       tank_charge = reco_readout->tank_charge(0, pulse.start_time(),
-        pulse.start_time() + 100);
+        pulse.start_time() + TANK_CHARGE_TIME_WINDOW, num_unique_pmts);
       std::cout << "  start time = " << pulse.start_time() << ", amp = "
         << pulse.amplitude() << ", charge = " << pulse.charge()
         << ", tank charge = " << tank_charge << " nC\n";
       tank_charge_tree->Fill();
+
+      pulse_ptr = &pulse;
+      out_tree->Fill();
      }
 
-    const auto& ncv2_pulses = reco_readout->get_pulses(18, 0, 0);
+    // NCV PMT #2
+    card_id = 18;
+    channel_id = 0;
+    const auto& ncv2_pulses = reco_readout->get_pulses(card_id, channel_id, 0);
     std::cout << "Found " << ncv2_pulses.size() << " pulses on NCV PMT #2\n";
     for (const auto& pulse : ncv2_pulses) {
       tank_charge = reco_readout->tank_charge(0, pulse.start_time(),
-        pulse.start_time() + 100);
+        pulse.start_time() + TANK_CHARGE_TIME_WINDOW, num_unique_pmts);
       std::cout << "  start time = " << pulse.start_time() << ", amp = "
         << pulse.amplitude() << ", charge = " << pulse.charge()
         << ", tank charge = " << tank_charge << " nC\n";
       tank_charge_tree->Fill();
+
+      pulse_ptr = &pulse;
+      out_tree->Fill();
      }
   }
 
