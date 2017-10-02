@@ -38,6 +38,8 @@ namespace annie {
       double tank_charge(int minibuffer_number, size_t start_time,
         size_t end_time, int& num_unique_water_pmts) const;
 
+      inline int sequence_id() const { return sequence_id_; }
+
     protected:
 
       // @brief Integer identifier for this readout that is unique within a run
