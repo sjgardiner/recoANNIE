@@ -19,7 +19,7 @@ namespace {
      {  4, 1 }, // NCV PMT #1
      {  8, 2 }, // neutron calibration source trigger input
      { 14, 0 }, // cosmic trigger input
-     { 18, 0 }, // NCV PMT #1
+     { 18, 0 }, // NCV PMT #2
   }};
 }
 
