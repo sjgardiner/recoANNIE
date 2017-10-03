@@ -1,4 +1,5 @@
 // standard library includes
+#include <cmath>
 #include <initializer_list>
 #include <iomanip>
 #include <iostream>
@@ -46,6 +47,8 @@ constexpr int UNIQUE_WATER_PMT_CUT = 8; // PMTs
 constexpr double TANK_CHARGE_CUT = 3.; // nC
 
 constexpr unsigned short PULSE_TOO_BIG = 430; // ADC counts
+
+constexpr long long COINCIDENCE_TOLERANCE = 40; // ns
 
 struct ValueAndError {
   double value;
@@ -123,6 +126,19 @@ bool approve_event(double event_time, double old_time, const annie::RecoPulse&
 
   if (num_unique_water_pmts >= UNIQUE_WATER_PMT_CUT) return false;
   if (tank_charge >= TANK_CHARGE_CUT) return false;
+
+  // NCV coincidence cut
+  long long ncv1_time = first_ncv1_pulse.start_time();
+  bool found_coincidence = false;
+  for ( const auto& pulse : readout.get_pulses(18, 0, minibuffer_index) ) {
+    long long ncv2_time = pulse.start_time();
+    if ( std::abs( ncv1_time - ncv2_time ) < COINCIDENCE_TOLERANCE ) {
+      found_coincidence = true;
+      break;
+    }
+  }
+
+  if (!found_coincidence) return false;
 
   //// Veto the entire readout if there is a really big NCV PMT #1 pulse
   //for (const auto& pulse : readout.get_pulses(4, 1, minibuffer_index)) {
