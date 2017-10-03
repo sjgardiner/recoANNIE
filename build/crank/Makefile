@@ -57,7 +57,7 @@ ifneq ($(MAKECMDGOALS),clean)
     ROOT_CXXFLAGS := $(shell $(ROOTCONFIG) --cflags)
     ROOT_LDFLAGS := $(shell $(ROOTCONFIG) --ldflags)
     ROOT_LIBDIR := $(shell $(ROOTCONFIG) --libdir)
-    ROOT_LDFLAGS += -L$(ROOT_LIBDIR) -lCore -lRIO -lHist -lTree
+    ROOT_LDFLAGS += -L$(ROOT_LIBDIR) -lCore -lRIO -lHist -lTree -lGraf
     ifeq ($(UNAME_S),Linux)
       ROOT_LDFLAGS += -rdynamic
     endif

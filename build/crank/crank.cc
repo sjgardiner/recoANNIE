@@ -15,6 +15,7 @@
 #include "TFile.h"
 #include "TGraphErrors.h"
 #include "TH1D.h"
+#include "TLegend.h"
 #include "TMultiGraph.h"
 #include "TTree.h"
 
@@ -424,6 +425,9 @@ int main(int argc, char* argv[]) {
   TMultiGraph horizontal_graph;
   TMultiGraph vertical_graph;
 
+  TLegend lg(0.2, 0.2, 0.5, 0.5);
+  lg.SetHeader("NCV position");
+
   std::cout << "*** Estimated neutron event rates ***\n";
   for (const auto& pair : positions_and_rates) {
     int pos = pair.first;
@@ -448,6 +452,8 @@ int main(int argc, char* argv[]) {
 
     horizontal_graph.Add(horiz_gr);
     vertical_graph.Add(vert_gr);
+
+    lg.AddEntry(vert_gr, std::to_string(pos).c_str(), "lep");
   }
 
   out_file.cd();
@@ -460,6 +466,7 @@ int main(int argc, char* argv[]) {
 
   horizontal_graph.Write("horizontal_graph");
   vertical_graph.Write("vertical_graph");
+  lg.Write("legend_for_rate_graphs");
 
   return 0;
 }
