@@ -320,6 +320,86 @@ void make_efficiency_plot(TFile& output_file) {
   eff_hist->Write();
 }
 
+void make_hefty_efficiency_plot(TFile& output_file) {
+
+  std::cout << "Opening position #8 source data\n";
+  TChain source_data_chain("reco_readout_tree");
+  source_data_chain.Add("/annie/data/users/gardiner/reco-annie/"
+    "r830.root");
+
+  std::cout << "Opening position #8 hefty timing data\n";
+  TChain source_heftydb_chain("heftydb");
+  source_heftydb_chain.Add("/annie/data/users/gardiner/reco-annie/timing/"
+    "timing_r830.root");
+
+  // TODO: remove hard-coded calibration trigger label here
+  long number_of_source_triggers = source_heftydb_chain.Draw("Label[]",
+    "Label[] == 4", "goff");
+  double norm_factor = 1. / number_of_source_triggers;
+
+  std::cout << "Analyzing position #8 source data\n";
+  TH1D source_data_hist = make_hefty_timing_hist(source_data_chain,
+    source_heftydb_chain, norm_factor, "pos8_source_data_hist",
+    "Position #8 source data event times");
+
+  // TODO: redo simulation with position #8 HeftySource configuration
+  std::cout << "Opening FREYA + RAT-PAC simulation results\n";
+  TFile freya_file("/annie/app/users/gardiner/ratpac_ana/"
+    "NEW_freya_evap_capture_times.root", "read");
+  TTree* freya_tree = nullptr;
+  freya_file.GetObject("capture_times_tree", freya_tree);
+
+  double freya_capture_time = 0.;
+  freya_tree->SetBranchAddress("capture_time", &freya_capture_time);
+
+  TH1D freya_hist("freya_hist", "FREYA + RATPAC capture times", NUM_TIME_BINS,
+    0., 8e4);
+  int num_entries = freya_tree->GetEntries();
+  for (int i = 0; i < num_entries; ++i) {
+    freya_tree->GetEntry(i);
+    freya_hist.Fill(freya_capture_time + FREYA_TIME_OFFSET);
+  }
+  freya_hist.Scale(1e-6);
+
+  std::cout << "Fitting simulation + flat background to data\n";
+  auto temp_func = [&freya_hist](double* x, double* p) {
+    double xx = x[0];
+    int bin = freya_hist.FindBin(xx);
+    return p[0] * freya_hist.GetBinContent(bin) + p[1];
+  };
+
+  TF1 hefty_eff_fit_func("hefty_eff_fit_func", temp_func, 0., 1e5, 2);
+  hefty_eff_fit_func.SetParameters(1., 1e-3);
+
+  source_data_hist.Fit(&hefty_eff_fit_func, "", "", 2400, 8e4);
+
+  double efficiency_lower_bound = hefty_eff_fit_func.GetParameter(0);
+  std::cout << "Estimate of NCV efficiency = " << efficiency_lower_bound
+    << '\n';
+
+  std::unique_ptr<TH1D> hefty_eff_hist( dynamic_cast<TH1D*>(
+    freya_hist.Clone("hefty_eff_hist") ) );
+  hefty_eff_hist->Scale(efficiency_lower_bound);
+  for (int b = 1; b <= hefty_eff_hist->GetNbinsX(); ++b)
+    hefty_eff_hist->SetBinContent(b, hefty_eff_hist->GetBinContent(b)
+      + hefty_eff_fit_func.GetParameter(1));
+
+  source_data_hist.SetLineColor(kBlack);
+  source_data_hist.SetLineWidth(2);
+  source_data_hist.GetFunction("hefty_eff_fit_func")->SetBit(TF1::kNotDraw);
+  //source_data_hist.GetFunction("hefty_eff_fit_func")->Delete();
+
+  hefty_eff_hist->SetLineWidth(2);
+  hefty_eff_hist->SetLineColor(kBlue);
+  hefty_eff_hist->SetTitle("Scaled FREYA/RAT-PAC prediction + flat background");
+
+  output_file.cd();
+
+  hefty_eff_fit_func.Write();
+  source_data_hist.Write();
+  hefty_eff_hist->Write();
+}
+
 // Returns the estimated neutron event rate (in neutrons / POT)
 ValueAndError make_timing_distribution(
   const std::initializer_list<int>& runs, int ncv_position, TFile& output_file,
@@ -394,7 +474,8 @@ int main(int argc, char* argv[]) {
 
   TFile out_file(argv[1], "recreate");
 
-  make_efficiency_plot(out_file);
+  //make_efficiency_plot(out_file);
+  make_hefty_efficiency_plot(out_file);
 
   // Cartesian coordinates (mm) of the NCV center for each position. Taken
   // from the RAT-PAC simulation by V. Fischer.
