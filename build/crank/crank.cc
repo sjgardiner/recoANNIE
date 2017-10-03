@@ -392,7 +392,8 @@ int main(int argc, char* argv[]) {
 
   // Make the rate plots
   std::map<int, ValueAndError> positions_and_rates = {
-    { 1, make_timing_distribution( { 650 }, 1, out_file, false, 1. / 1.33e18) },
+    { 1, make_timing_distribution( { 650, 653 }, 1, out_file, false,
+      1. / 2.49e18) },
     { 2, make_timing_distribution( { 798 }, 2, out_file, true, 1. / 1.42e19)  },
     { 3, make_timing_distribution( { 803 }, 3, out_file, true, 1. / 1.33e19)  },
     { 4, make_timing_distribution( { 808, 812 }, 4, out_file,
