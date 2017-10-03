@@ -19,7 +19,12 @@ annie::RawChannel::RawChannel(int ChannelNumber,
   for (size_t mb = 0; mb < MiniBufferCount; ++mb) {
     data_.emplace_back(); // Create a new empty minibuffer
 
-    for (size_t s = 0; s < half_minibuffer_length; s += 2) {
+    // Get the starting and ending indices (within the current
+    // channel's subbuffer) for the current minibuffer
+    size_t start_sample = mb * half_minibuffer_length;
+    size_t end_sample = (mb + 1) * half_minibuffer_length;
+
+    for (size_t s = start_sample; s < end_sample; s += 2) {
       data_.back().push_back( *(data_begin + s) );
       data_.back().push_back( *(data_begin + s + 1) );
       data_.back().push_back( *(data_halfway + s) );
