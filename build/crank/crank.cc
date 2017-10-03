@@ -293,12 +293,13 @@ void make_efficiency_plot(TFile& output_file) {
 
   source_data_hist.Fit(&eff_fit_func, "", "", 2400, 8e4);
 
-  std::cout << "Estimate of NCV efficiency = " << eff_fit_func.GetParameter(0)
+  double efficiency_lower_bound = eff_fit_func.GetParameter(0);
+  std::cout << "Estimate of NCV efficiency = " << efficiency_lower_bound
     << '\n';
 
   std::unique_ptr<TH1D> eff_hist( dynamic_cast<TH1D*>(
     freya_hist.Clone("eff_hist") ) );
-  eff_hist->Scale( eff_fit_func.GetParameter(0) );
+  eff_hist->Scale(efficiency_lower_bound);
   for (int b = 1; b <= eff_hist->GetNbinsX(); ++b) eff_hist->SetBinContent(b,
     eff_hist->GetBinContent(b) + eff_fit_func.GetParameter(1));
 
@@ -313,6 +314,7 @@ void make_efficiency_plot(TFile& output_file) {
 
   output_file.cd();
 
+  eff_fit_func.Write();
   source_data_hist.Write();
   eff_hist->Write();
 }
