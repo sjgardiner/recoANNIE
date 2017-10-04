@@ -95,10 +95,12 @@ ValueAndError neutron_excess(TH1D& hist, bool hefty_mode)
   double error_sum_bi = 0.;
   double error_sum_nj = 0.;
 
-  for (int i = b_low; i < b_high; ++i) {
-    sum_bi += hist.GetBinContent(i);
-    error_sum_bi += std::max(hist.GetBinContent(i), 1.);
-  }
+  // TODO: include background subtraction again
+
+  //for (int i = b_low; i < b_high; ++i) {
+  //  sum_bi += hist.GetBinContent(i);
+  //  error_sum_bi += std::max(hist.GetBinContent(i), 1.);
+  //}
 
   for (int j = s_low; j < s_high; ++j) {
     sum_nj += hist.GetBinContent(j);
@@ -128,6 +130,11 @@ bool approve_event(double event_time, double old_time, const annie::RecoPulse&
   if (num_unique_water_pmts >= UNIQUE_WATER_PMT_CUT) return false;
   if (tank_charge >= TANK_CHARGE_CUT) return false;
 
+  // Veto the entire readout if there is a really big NCV PMT #1 pulse
+  for (const auto& pulse : readout.get_pulses(4, 1, minibuffer_index)) {
+    if (pulse.raw_amplitude() > PULSE_TOO_BIG) return false;
+  }
+
   // NCV coincidence cut
   long long ncv1_time = first_ncv1_pulse.start_time();
   bool found_coincidence = false;
@@ -140,11 +147,6 @@ bool approve_event(double event_time, double old_time, const annie::RecoPulse&
   }
 
   if (!found_coincidence) return false;
-
-  //// Veto the entire readout if there is a really big NCV PMT #1 pulse
-  //for (const auto& pulse : readout.get_pulses(4, 1, minibuffer_index)) {
-  //  if (pulse.raw_amplitude() > PULSE_TOO_BIG) return false;
-  //}
 
   return true;
 }
@@ -252,7 +254,8 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
 }
 
 
-void make_efficiency_plot(TFile& output_file) {
+// Returns the approximate lower bound on the efficiency of Hefty mode
+double make_efficiency_plot(TFile& output_file) {
 
   std::cout << "Opening position #1 source data\n";
   TChain source_data_chain("reco_readout_tree");
@@ -318,9 +321,12 @@ void make_efficiency_plot(TFile& output_file) {
   eff_fit_func.Write();
   source_data_hist.Write();
   eff_hist->Write();
+
+  return efficiency_lower_bound;
 }
 
-void make_hefty_efficiency_plot(TFile& output_file) {
+// Returns the approximate lower bound on the efficiency of HeftySource mode
+double make_hefty_efficiency_plot(TFile& output_file) {
 
   std::cout << "Opening position #8 source data\n";
   TChain source_data_chain("reco_readout_tree");
@@ -398,6 +404,8 @@ void make_hefty_efficiency_plot(TFile& output_file) {
   hefty_eff_fit_func.Write();
   source_data_hist.Write();
   hefty_eff_hist->Write();
+
+  return efficiency_lower_bound;
 }
 
 // Returns the estimated neutron event rate (in neutrons / POT)
@@ -457,7 +465,7 @@ ValueAndError make_timing_distribution(
 
   temp_hist->Scale(norm_factor);
   temp_hist->GetXaxis()->SetTitle("time (ns)");
-  temp_hist->GetYaxis()->SetTitle("counts / POT");
+  temp_hist->GetYaxis()->SetTitle("neutrons / POT");
 
   output_file.cd();
   temp_hist->Write();
@@ -474,8 +482,8 @@ int main(int argc, char* argv[]) {
 
   TFile out_file(argv[1], "recreate");
 
-  make_efficiency_plot(out_file);
-  make_hefty_efficiency_plot(out_file);
+  double nonhefty_efficiency = make_efficiency_plot(out_file);
+  double hefty_efficiency = make_hefty_efficiency_plot(out_file);
 
   // Cartesian coordinates (mm) of the NCV center for each position. Taken
   // from the RAT-PAC simulation by V. Fischer.
@@ -492,15 +500,27 @@ int main(int argc, char* argv[]) {
 
   // Make the rate plots
   std::map<int, ValueAndError> positions_and_rates = {
+
     { 1, make_timing_distribution( { 650, 653 }, 1, out_file, false,
-      1. / 2.49e18) },
-    { 2, make_timing_distribution( { 798 }, 2, out_file, true, 1. / 1.42e19)  },
-    { 3, make_timing_distribution( { 803 }, 3, out_file, true, 1. / 1.33e19)  },
+      1. / (2.49e18 * nonhefty_efficiency) ) },
+
+    { 2, make_timing_distribution( { 798 }, 2, out_file, true,
+      1. / (1.42e19 * hefty_efficiency) )  },
+
+    { 3, make_timing_distribution( { 803 }, 3, out_file, true,
+      1. / (1.33e19 * hefty_efficiency) )  },
+
     { 4, make_timing_distribution( { 808, 812 }, 4, out_file,
-      true, 1. / 2.43e19) },
-    { 5, make_timing_distribution( { 813 }, 5, out_file, true, 1. / 1.34e19)  },
-    { 6, make_timing_distribution( { 814 }, 6, out_file, true, 1. / 6.20e18)  },
-    { 7, make_timing_distribution( { 815 }, 7, out_file, true, 1. / 4.05e18)  },
+      true, 1. / (2.43e19 * hefty_efficiency) ) },
+
+    { 5, make_timing_distribution( { 813 }, 5, out_file, true,
+      1. / (1.34e19 * hefty_efficiency) ) },
+
+    { 6, make_timing_distribution( { 814 }, 6, out_file, true,
+      1. / (6.20e18 * hefty_efficiency) ) },
+
+    { 7, make_timing_distribution( { 815 }, 7, out_file, true,
+      1. / (4.05e18 * hefty_efficiency) ) },
   };
 
   TMultiGraph horizontal_graph;
@@ -540,10 +560,10 @@ int main(int argc, char* argv[]) {
   out_file.cd();
 
   horizontal_graph.SetTitle("NCV background neutron rates;"
-    " NCV horizontal distance from tank center (cm); counts / POT");
+    " NCV horizontal distance from tank center (cm); neutrons / POT");
 
   vertical_graph.SetTitle("NCV background neutron rates;"
-    " NCV center height (cm); counts / POT");
+    " NCV center height (cm); neutrons / POT");
 
   horizontal_graph.Write("horizontal_graph");
   vertical_graph.Write("vertical_graph");
