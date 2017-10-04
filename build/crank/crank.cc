@@ -130,10 +130,10 @@ bool approve_event(double event_time, double old_time, const annie::RecoPulse&
   if (num_unique_water_pmts >= UNIQUE_WATER_PMT_CUT) return false;
   if (tank_charge >= TANK_CHARGE_CUT) return false;
 
-  // Veto the entire readout if there is a really big NCV PMT #1 pulse
-  for (const auto& pulse : readout.get_pulses(4, 1, minibuffer_index)) {
-    if (pulse.raw_amplitude() > PULSE_TOO_BIG) return false;
-  }
+  //// Veto the entire readout if there is a really big NCV PMT #1 pulse
+  //for (const auto& pulse : readout.get_pulses(4, 1, minibuffer_index)) {
+  //  if (pulse.raw_amplitude() > PULSE_TOO_BIG) return false;
+  //}
 
   // NCV coincidence cut
   long long ncv1_time = first_ncv1_pulse.start_time();
@@ -473,6 +473,44 @@ ValueAndError make_timing_distribution(
   return rate_with_error;
 }
 
+void compute_dark_rate() {
+  std::cout << "Opening position #8 soft data\n";
+  TChain soft_chain("reco_readout_tree");
+  soft_chain.Add("/annie/data/users/gardiner/reco-annie/"
+    "r856.root");
+
+  annie::RecoReadout* rr = nullptr;
+  soft_chain.SetBranchAddress("reco_readout", &rr);
+
+  std::cout << "Computing background pulse rate using soft data\n";
+  long num_pulses = 0;
+  long num_entries = soft_chain.GetEntries();
+  for (long i = 0; i < num_entries; ++i) {
+    if (i % 1000 == 0) std::cout << "Entry " << i << " of "
+      << num_entries << '\n';
+    soft_chain.GetEntry(i);
+
+    const std::vector<annie::RecoPulse>& ncv1_pulses
+      = rr->get_pulses(4, 1, 0);
+
+    double old_time = std::numeric_limits<double>::lowest(); // ns
+    for (const auto& pulse : ncv1_pulses) {
+
+      double event_time = static_cast<double>( pulse.start_time() );
+
+      if ( approve_event(event_time, old_time, pulse, *rr, 0) ) {
+        ++num_pulses;
+        old_time = event_time;
+      }
+    }
+  }
+
+  std::cout << "Found " << num_pulses << " pulses in " << num_entries
+    << " soft triggers\n";
+  std::cout << "Background pulse rate = " << static_cast<double>(num_pulses)
+    / (num_entries * 8e4) << " pulses / ns\n";
+}
+
 int main(int argc, char* argv[]) {
 
   if (argc < 2) {
@@ -481,6 +519,8 @@ int main(int argc, char* argv[]) {
   }
 
   TFile out_file(argv[1], "recreate");
+
+  compute_dark_rate();
 
   double nonhefty_efficiency = make_efficiency_plot(out_file);
   double hefty_efficiency = make_hefty_efficiency_plot(out_file);
