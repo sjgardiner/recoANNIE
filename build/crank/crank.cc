@@ -474,7 +474,7 @@ int main(int argc, char* argv[]) {
 
   TFile out_file(argv[1], "recreate");
 
-  //make_efficiency_plot(out_file);
+  make_efficiency_plot(out_file);
   make_hefty_efficiency_plot(out_file);
 
   // Cartesian coordinates (mm) of the NCV center for each position. Taken
