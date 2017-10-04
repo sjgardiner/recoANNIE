@@ -51,6 +51,8 @@ constexpr unsigned short PULSE_TOO_BIG = 430; // ADC counts
 
 constexpr long long COINCIDENCE_TOLERANCE = 40; // ns
 
+constexpr double SIGNAL_WINDOW_TIME = 6e4; // ns
+
 struct ValueAndError {
   double value;
   double error;
@@ -411,7 +413,8 @@ double make_hefty_efficiency_plot(TFile& output_file) {
 // Returns the estimated neutron event rate (in neutrons / POT)
 ValueAndError make_timing_distribution(
   const std::initializer_list<int>& runs, int ncv_position, TFile& output_file,
-  bool hefty_mode, double norm_factor)
+  bool hefty_mode, long spills, double pot, double efficiency,
+  double background_events_per_ns)
 {
   TChain rch("reco_readout_tree");
   TChain hch("heftydb");
@@ -460,12 +463,23 @@ ValueAndError make_timing_distribution(
     rate_with_error = neutron_excess(*temp_hist, true);
   }
 
+  // TODO: scrutinize this carefully DEBUG
+  double expected_background_events = SIGNAL_WINDOW_TIME
+    * background_events_per_ns * spills;
+  // TODO: DEBUG change this (rough estimate of efficiency effect)
+  if (hefty_mode) expected_background_events *= 10.;
+
+  rate_with_error.value -= expected_background_events;
+  rate_with_error.error += std::sqrt(expected_background_events);
+
+  double norm_factor = 1. / (pot * efficiency);
+
   rate_with_error.value *= norm_factor;
   rate_with_error.error *= norm_factor;
 
   temp_hist->Scale(norm_factor);
   temp_hist->GetXaxis()->SetTitle("time (ns)");
-  temp_hist->GetYaxis()->SetTitle("neutrons / POT");
+  temp_hist->GetYaxis()->SetTitle("events / POT");
 
   output_file.cd();
   temp_hist->Write();
@@ -473,7 +487,8 @@ ValueAndError make_timing_distribution(
   return rate_with_error;
 }
 
-void compute_dark_rate() {
+// Returns the "soft" event rate in events / ns
+double compute_nonhefty_soft_rate() {
   std::cout << "Opening position #8 soft data\n";
   TChain soft_chain("reco_readout_tree");
   soft_chain.Add("/annie/data/users/gardiner/reco-annie/"
@@ -505,10 +520,13 @@ void compute_dark_rate() {
     }
   }
 
+  double soft_rate = static_cast<double>(num_pulses) / (num_entries * 8e4);
+
   std::cout << "Found " << num_pulses << " pulses in " << num_entries
     << " soft triggers\n";
-  std::cout << "Background pulse rate = " << static_cast<double>(num_pulses)
-    / (num_entries * 8e4) << " pulses / ns\n";
+  std::cout << "Background pulse rate = " << soft_rate << " pulses / ns\n";
+
+  return soft_rate;
 }
 
 int main(int argc, char* argv[]) {
@@ -520,7 +538,7 @@ int main(int argc, char* argv[]) {
 
   TFile out_file(argv[1], "recreate");
 
-  compute_dark_rate();
+  double nonhefty_soft_rate = compute_nonhefty_soft_rate();
 
   double nonhefty_efficiency = make_efficiency_plot(out_file);
   double hefty_efficiency = make_hefty_efficiency_plot(out_file);
@@ -542,25 +560,25 @@ int main(int argc, char* argv[]) {
   std::map<int, ValueAndError> positions_and_rates = {
 
     { 1, make_timing_distribution( { 650, 653 }, 1, out_file, false,
-      1. / (2.49e18 * nonhefty_efficiency) ) },
+      621744, 2.49e18, nonhefty_efficiency, nonhefty_soft_rate ) },
 
     { 2, make_timing_distribution( { 798 }, 2, out_file, true,
-      1. / (1.42e19 * hefty_efficiency) )  },
+      2938556, 1.42e19, hefty_efficiency, nonhefty_soft_rate )  },
 
     { 3, make_timing_distribution( { 803 }, 3, out_file, true,
-      1. / (1.33e19 * hefty_efficiency) )  },
+      2296022, 1.33e19, hefty_efficiency, nonhefty_soft_rate )  },
 
-    { 4, make_timing_distribution( { 808, 812 }, 4, out_file,
-      true, 1. / (2.43e19 * hefty_efficiency) ) },
+    { 4, make_timing_distribution( { 808, 812 }, 4, out_file, true,
+      3801388, 2.43e19, hefty_efficiency, nonhefty_soft_rate ) },
 
     { 5, make_timing_distribution( { 813 }, 5, out_file, true,
-      1. / (1.34e19 * hefty_efficiency) ) },
+      2233860, 1.34e19, hefty_efficiency, nonhefty_soft_rate ) },
 
     { 6, make_timing_distribution( { 814 }, 6, out_file, true,
-      1. / (6.20e18 * hefty_efficiency) ) },
+      1070723, 6.20e18, hefty_efficiency, nonhefty_soft_rate ) },
 
     { 7, make_timing_distribution( { 815 }, 7, out_file, true,
-      1. / (4.05e18 * hefty_efficiency) ) },
+      697089, 4.05e18, hefty_efficiency, nonhefty_soft_rate ) },
   };
 
   TMultiGraph horizontal_graph;
