@@ -8,6 +8,7 @@
 #include "TTree.h"
 
 // reco-annie includes
+#include "annie/Constants.hh"
 #include "annie/RawAnalyzer.hh"
 #include "annie/RawReader.hh"
 #include "annie/RawReadout.hh"
@@ -69,36 +70,53 @@ int main(int argc, char* argv[]) {
     // NCV PMT #1
     card_id = 4;
     channel_id = 1;
-    const auto& ncv1_pulses = reco_readout->get_pulses(card_id, channel_id, 0);
-    std::cout << "Found " << ncv1_pulses.size() << " pulses on NCV PMT #1\n";
-    for (const auto& pulse : ncv1_pulses) {
-      tank_charge = reco_readout->tank_charge(0, pulse.start_time(),
-        pulse.start_time() + TANK_CHARGE_TIME_WINDOW, num_unique_pmts);
-      std::cout << "  start time = " << pulse.start_time() << ", amp = "
-        << pulse.amplitude() << ", charge = " << pulse.charge()
-        << ", tank charge = " << tank_charge << " nC\n";
-      tank_charge_tree->Fill();
+    for (const auto& pair : reco_readout->pulses().at(card_id).at(channel_id))
+    {
+      int minibuffer_id = pair.first;
+      const auto& ncv1_pulses = pair.second;
+      std::cout << "Found " << ncv1_pulses.size() << " pulses on NCV PMT #1"
+        << " in minibuffer " << minibuffer_id << '\n';
 
-      pulse_ptr = &pulse;
-      out_tree->Fill();
-     }
+      for (const auto& pulse : ncv1_pulses) {
+        tank_charge = reco_readout->tank_charge(minibuffer_id,
+          pulse.start_time(), pulse.start_time() + TANK_CHARGE_TIME_WINDOW,
+          num_unique_pmts);
+        std::cout << "  start time = " << pulse.start_time() << ", amp = "
+          << pulse.amplitude() << ", charge = " << pulse.charge()
+          << ", tank charge = " << tank_charge << " nC\n";
+        tank_charge_tree->Fill();
+
+        pulse_ptr = &pulse;
+        out_tree->Fill();
+      }
+
+    }
 
     // NCV PMT #2
     card_id = 18;
     channel_id = 0;
-    const auto& ncv2_pulses = reco_readout->get_pulses(card_id, channel_id, 0);
-    std::cout << "Found " << ncv2_pulses.size() << " pulses on NCV PMT #2\n";
-    for (const auto& pulse : ncv2_pulses) {
-      tank_charge = reco_readout->tank_charge(0, pulse.start_time(),
-        pulse.start_time() + TANK_CHARGE_TIME_WINDOW, num_unique_pmts);
-      std::cout << "  start time = " << pulse.start_time() << ", amp = "
-        << pulse.amplitude() << ", charge = " << pulse.charge()
-        << ", tank charge = " << tank_charge << " nC\n";
-      tank_charge_tree->Fill();
+    for (const auto& pair : reco_readout->pulses().at(card_id).at(channel_id))
+    {
+      int minibuffer_id = pair.first;
+      const auto& ncv2_pulses = pair.second;
+      std::cout << "Found " << ncv2_pulses.size() << " pulses on NCV PMT #2"
+        << " in minibuffer " << minibuffer_id << '\n';
 
-      pulse_ptr = &pulse;
-      out_tree->Fill();
-     }
+      for (const auto& pulse : ncv2_pulses) {
+        tank_charge = reco_readout->tank_charge(minibuffer_id,
+          pulse.start_time(), pulse.start_time() + TANK_CHARGE_TIME_WINDOW,
+          num_unique_pmts);
+        std::cout << "  start time = " << pulse.start_time() << ", amp = "
+          << pulse.amplitude() << ", charge = " << pulse.charge()
+          << ", tank charge = " << tank_charge << " nC\n";
+        tank_charge_tree->Fill();
+
+        pulse_ptr = &pulse;
+        out_tree->Fill();
+      }
+
+    }
+
   }
 
   out_tree->Write();
