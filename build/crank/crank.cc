@@ -266,15 +266,15 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
 // Returns the approximate lower bound on the efficiency of Hefty mode
 double make_efficiency_plot(TFile& output_file) {
 
-  std::cout << "Opening position #1 source data\n";
+  std::cout << "Opening position #8 source data\n";
   TChain source_data_chain("reco_readout_tree");
   source_data_chain.Add("/annie/data/users/gardiner/reco-annie/"
-    "source_data_pos1.root");
+    "nonhefty_source_data_pos8.root");
 
   std::cout << "Analyzing position #1 source data\n";
   TH1D source_data_hist = make_nonhefty_timing_hist(source_data_chain,
-    1. / source_data_chain.GetEntries(), "pos1_source_data_hist",
-    "Position #1 source data event times");
+    1. / source_data_chain.GetEntries(), "nonhefty_pos8_source_data_hist",
+    "Position #8 source data event times");
 
   std::cout << "Opening FREYA + RAT-PAC simulation results\n";
   TFile freya_file("/annie/app/users/gardiner/ratpac_ana/"
@@ -354,7 +354,7 @@ double make_hefty_efficiency_plot(TFile& output_file) {
 
   std::cout << "Analyzing position #8 source data\n";
   TH1D source_data_hist = make_hefty_timing_hist(source_data_chain,
-    source_heftydb_chain, norm_factor, "pos8_source_data_hist",
+    source_heftydb_chain, norm_factor, "hefty_pos8_source_data_hist",
     "Position #8 source data event times");
 
   // TODO: redo simulation with position #8 HeftySource configuration
