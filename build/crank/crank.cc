@@ -28,10 +28,12 @@ constexpr double VETO_TIME = 1e3; // ns
 
 constexpr int BEAM_MINIBUFFER_LABEL = 1;
 constexpr int NCV_MINIBUFFER_LABEL = 2;
+constexpr int SOURCE_MINIBUFFER_LABEL = 4;
 
 constexpr int NUM_HEFTY_MINIBUFFERS = 40;
 
-constexpr double FREYA_TIME_OFFSET = 2e3; // ns
+constexpr double FREYA_NONHEFTY_TIME_OFFSET = 2e3; // ns
+constexpr double FREYA_HEFTY_TIME_OFFSET = 0; // ns
 
 constexpr double NONHEFTY_FIT_START_TIME = 2e4; // ns
 constexpr double HEFTY_FIT_START_TIME = 1e4; // ns
@@ -227,6 +229,7 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
       // (the current Hefty mode timing scripts do not calculate a valid
       // TSinceBeam value for the other minibuffer labels)
       if (db_Label[m] != BEAM_MINIBUFFER_LABEL
+        && db_Label[m] != SOURCE_MINIBUFFER_LABEL
         && db_Label[m] != NCV_MINIBUFFER_LABEL) continue;
 
       const std::vector<annie::RecoPulse>& ncv1_pulses
@@ -238,8 +241,12 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
       for (const auto& pulse : ncv1_pulses) {
         double event_time = static_cast<double>( pulse.start_time() );
 
-        // Add the offset of the current minibuffer to the pulse start time
-        event_time += db_TSinceBeam[m];
+        // Add the offset of the current minibuffer to the pulse start time.
+        // Assume an offset of zero for source trigger minibuffers (TSinceBeam
+        // is not currently calculated for those).
+        if (db_Label[m] != SOURCE_MINIBUFFER_LABEL) {
+          event_time += db_TSinceBeam[m];
+        }
 
         if ( approve_event(event_time, old_time, pulse, *rr, m) ) {
 
@@ -283,7 +290,7 @@ double make_efficiency_plot(TFile& output_file) {
   int num_entries = freya_tree->GetEntries();
   for (int i = 0; i < num_entries; ++i) {
     freya_tree->GetEntry(i);
-    freya_hist.Fill(freya_capture_time + FREYA_TIME_OFFSET);
+    freya_hist.Fill(freya_capture_time + FREYA_NONHEFTY_TIME_OFFSET);
   }
   freya_hist.Scale(1e-6);
 
@@ -365,7 +372,7 @@ double make_hefty_efficiency_plot(TFile& output_file) {
   int num_entries = freya_tree->GetEntries();
   for (int i = 0; i < num_entries; ++i) {
     freya_tree->GetEntry(i);
-    freya_hist.Fill(freya_capture_time + FREYA_TIME_OFFSET);
+    freya_hist.Fill(freya_capture_time + FREYA_HEFTY_TIME_OFFSET);
   }
   freya_hist.Scale(1e-6);
 
@@ -379,7 +386,7 @@ double make_hefty_efficiency_plot(TFile& output_file) {
   TF1 hefty_eff_fit_func("hefty_eff_fit_func", temp_func, 0., 1e5, 2);
   hefty_eff_fit_func.SetParameters(1., 1e-3);
 
-  source_data_hist.Fit(&hefty_eff_fit_func, "", "", 2400, 8e4);
+  source_data_hist.Fit(&hefty_eff_fit_func, "", "", 800, 8e4);
 
   double efficiency_lower_bound = hefty_eff_fit_func.GetParameter(0);
   std::cout << "Estimate of NCV efficiency = " << efficiency_lower_bound
