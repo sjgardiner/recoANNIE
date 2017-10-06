@@ -266,15 +266,28 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
 // Returns the approximate lower bound on the efficiency of Hefty mode
 double make_efficiency_plot(TFile& output_file) {
 
-  std::cout << "Opening position #8 source data\n";
+  std::cout << "Opening position #1 source data\n";
   TChain source_data_chain("reco_readout_tree");
   source_data_chain.Add("/annie/data/users/gardiner/reco-annie/"
-    "nonhefty_source_data_pos8.root");
+    "source_data_pos1.root");
 
   std::cout << "Analyzing position #1 source data\n";
   TH1D source_data_hist = make_nonhefty_timing_hist(source_data_chain,
-    1. / source_data_chain.GetEntries(), "nonhefty_pos8_source_data_hist",
-    "Position #8 source data event times");
+    1. / source_data_chain.GetEntries(), "nonhefty_pos1_source_data_hist",
+    "Position #1 source data event times");
+
+  // TODO: go back to using position #8 source data when you finish
+  // the new RAT-PAC simulation
+
+  //std::cout << "Opening position #8 source data\n";
+  //TChain source_data_chain("reco_readout_tree");
+  //source_data_chain.Add("/annie/data/users/gardiner/reco-annie/"
+  //  "nonhefty_source_data_pos8.root");
+
+  //std::cout << "Analyzing position #8 source data\n";
+  //TH1D source_data_hist = make_nonhefty_timing_hist(source_data_chain,
+  //  1. / source_data_chain.GetEntries(), "nonhefty_pos8_source_data_hist",
+  //  "Position #8 source data event times");
 
   std::cout << "Opening FREYA + RAT-PAC simulation results\n";
   TFile freya_file("/annie/app/users/gardiner/ratpac_ana/"
@@ -470,12 +483,13 @@ ValueAndError make_timing_distribution(
     rate_with_error = neutron_excess(*temp_hist, true);
   }
 
-  // TODO: scrutinize this carefully DEBUG
+  // TODO: scrutinize this carefully
   double expected_background_events = SIGNAL_WINDOW_TIME
     * background_events_per_ns * spills;
-  // TODO: DEBUG change this (rough estimate of efficiency effect)
-  if (hefty_mode) expected_background_events *= 10.;
 
+  // Background event counts are distributed according to a Poisson
+  // distribution, so the error on the expected number of background counts is
+  // the square root of the mean
   rate_with_error.value -= expected_background_events;
   rate_with_error.error += std::sqrt(expected_background_events);
 
@@ -548,7 +562,11 @@ int main(int argc, char* argv[]) {
   double nonhefty_soft_rate = compute_nonhefty_soft_rate();
 
   double nonhefty_efficiency = make_efficiency_plot(out_file);
-  double hefty_efficiency = make_hefty_efficiency_plot(out_file);
+
+  // TODO: return to using this when you get a reliable simulated
+  // neutron flux for position #8
+  //double hefty_efficiency = make_hefty_efficiency_plot(out_file);
+  double hefty_efficiency = nonhefty_efficiency;
 
   // Cartesian coordinates (mm) of the NCV center for each position. Taken
   // from the RAT-PAC simulation by V. Fischer.
