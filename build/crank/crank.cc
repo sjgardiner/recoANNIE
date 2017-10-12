@@ -373,7 +373,7 @@ double make_hefty_efficiency_plot(TFile& output_file) {
   // TODO: redo simulation with position #8 HeftySource configuration
   std::cout << "Opening FREYA + RAT-PAC simulation results\n";
   TFile freya_file("/annie/app/users/gardiner/ratpac_ana/"
-    "NEW_freya_evap_capture_times.root", "read");
+    "NEW_freya_evap_capture_times_POS8.root", "read");
   TTree* freya_tree = nullptr;
   freya_file.GetObject("capture_times_tree", freya_tree);
 
@@ -486,12 +486,15 @@ ValueAndError make_timing_distribution(
   // TODO: scrutinize this carefully
   double expected_background_events = SIGNAL_WINDOW_TIME
     * background_events_per_ns * spills;
+  std::cout << "DEBUG: rate = " << rate_with_error.value << " +- "
+    << rate_with_error.error << ", bckgd = " << expected_background_events
+    << '\n';
 
   // Background event counts are distributed according to a Poisson
   // distribution, so the error on the expected number of background counts is
   // the square root of the mean
-  rate_with_error.value -= expected_background_events;
-  rate_with_error.error += std::sqrt(expected_background_events);
+  //DEBUG rate_with_error.value -= expected_background_events;
+  //DEBUG rate_with_error.error += std::sqrt(expected_background_events);
 
   double norm_factor = 1. / (pot * efficiency);
 
@@ -579,6 +582,8 @@ int main(int argc, char* argv[]) {
     { 6, { -146.1, 0.0, 1444.78 } },
     { 7, {  311.1, 0.0, 276.38  } },
     { 8, {  311.1, 0.0, 1597.18 } }
+    // "Position 9" is non-Hefty data at position #2
+    // { 9, { -146.1, 0.0, 276.38  } },
   };
 
   // Make the rate plots
@@ -604,6 +609,10 @@ int main(int argc, char* argv[]) {
 
     { 7, make_timing_distribution( { 815 }, 7, out_file, true,
       697089, 4.05e18, hefty_efficiency, nonhefty_soft_rate ) },
+
+    // "Position 9" is non-Hefty data at position #2 (for testing)
+    //{ 9, make_timing_distribution( { 705 }, 9, out_file, false,
+    //  179272, 6.6195e17, nonhefty_efficiency, nonhefty_soft_rate ) },
   };
 
   TMultiGraph horizontal_graph;
