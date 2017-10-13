@@ -33,6 +33,22 @@ namespace annie {
       inline const annie::RawChannel& channel(int index) const
         { return channels_.at(index); }
 
+      inline unsigned long long last_sync() const { return last_sync_; }
+
+      inline int start_time_sec() const { return start_time_sec_; }
+      inline int start_time_nsec() const { return start_time_nsec_; }
+
+      inline unsigned long long start_count() const { return start_count_; }
+
+      /// @brief Compute the time (in nanoseconds since the Unix epoch) for the
+      /// trigger corresponding to the given minibuffer using the timestamps
+      /// from this card
+      unsigned long long trigger_time(size_t minibuffer_index) const;
+
+      /// @brief Get the number of minibuffers stored for each channel owned
+      /// by this card
+      inline size_t num_minibuffers() const { return trigger_counts_.size(); }
+
     protected:
 
       void add_channel(int channel_number,

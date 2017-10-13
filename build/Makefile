@@ -18,7 +18,7 @@ endif
 SHARED_LIB_NAME := RecoANNIE
 SHARED_LIB := lib$(SHARED_LIB_NAME).$(SHARED_LIB_SUFFIX)
 
-all: reco-annie
+all: reco-annie readout_pot
 
 # Skip lots of initialization if all we want is "make clean/uninstall"
 ifneq ($(MAKECMDGOALS),clean)
@@ -84,7 +84,8 @@ ifneq ($(MAKECMDGOALS),uninstall)
     endif
     ROOT_DICT_INCLUDES := -I$(INCLUDE_DIR) annie/RawChannel.hh \
       annie/RawCard.hh annie/RawReadout.hh annie/RecoPulse.hh \
-      annie/RawReader.hh annie/RecoReadout.hh annie/LinkDef.hh
+      annie/RawReader.hh annie/RecoReadout.hh annie/IFBeamDataPoint.hh \
+      annie/BeamStatus.hh annie/LinkDef.hh
     ROOT_OBJ_DICT = recoANNIE_dict.o
     ROOT_OBJECTS = $(ROOT_OBJ_DICT)
   
@@ -114,12 +115,17 @@ incdir = $(prefix)/include
 	$(CXX) $(ROOT_CXXFLAGS) $(CXXFLAGS) -I$(INCLUDE_DIR) -fPIC -o $@ -c $^
 
 $(SHARED_LIB): $(OBJECTS) $(ROOT_OBJECTS)
-	$(CXX) $(CXXFLAGS) -fPIC -shared -o $@ $^
+	$(CXX) $(CXXFLAGS) $(ROOT_LDFLAGS) -fPIC -shared -o $@ $^
 
 reco-annie: $(SHARED_LIB) reco-annie.o
 	$(CXX) $(CXXFLAGS) -o $@ -L. \
 	  -l$(SHARED_LIB_NAME) $(ROOT_LDFLAGS) \
 	  -Wl,-rpath -Wl,$(libdir):$(shell pwd) reco-annie.o
+
+readout_pot: $(SHARED_LIB) readout_pot.o
+	$(CXX) $(CXXFLAGS) -o $@ -L. \
+	  -l$(SHARED_LIB_NAME) $(ROOT_LDFLAGS) \
+	  -Wl,-rpath -Wl,$(libdir):$(shell pwd) readout_pot.o
 
 .PHONY: clean install uninstall
 
