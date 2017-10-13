@@ -22,6 +22,9 @@ const unsigned long long FIVE_SECONDS = 5000ull; // ms
 const unsigned long long THOUSAND = 1000ull;
 const unsigned long long MILLION = 1000000ull;
 
+// Card to use when computing trigger times for each minibuffer
+const size_t TRIGGER_TIME_CARD = 4;
+
 namespace {
   volatile std::sig_atomic_t interrupted = false;
 
@@ -52,34 +55,16 @@ void readout_pot(annie::RawReader& reader,
 
   int beam_branch_entries = beam_branch->GetEntries();
 
-  // Build an index for the beam branch to avoid lengthy searches later.
+  // Load an index for the beam branch to avoid lengthy searches.
   // Keys are entry numbers, values are start and end times for each
   // entry (in ms since the Unix epoch).
-  std::cout << "Building beam database index\n";
+  std::cout << "Loading beam database index\n";
 
-  std::map<int, std::pair<unsigned long long, unsigned long long> >
-    beam_index;
-  for (int l = 0; l < beam_branch_entries; ++l) {
-    beam_branch->GetEntry(l);
-
-    // TODO: remove hard-coded device name
-    const std::map<unsigned long long, IFBeamDataPoint>& pot_map
-      = beam_data->at("E:TOR875");
-
-    std::cout << "Read new beam entry " << l << " of "
-      << beam_branch_entries;
-
-    unsigned long long starting_ms = pot_map.begin()->first;
-    std::string begin_time_string = make_time_string(starting_ms);
-    unsigned long long ending_ms = (--pot_map.end())->first;
-    std::string end_time_string = make_time_string(ending_ms);
-
-    std::cout << " (" << begin_time_string << " to "
-      << end_time_string << ")\n";
-
-    beam_index[l] = std::pair<unsigned long long, unsigned long long>(
-      starting_ms, ending_ms);
-  }
+  std::map<int, std::pair<unsigned long long, unsigned long long> >*
+    beam_index = nullptr;
+  beam_file.GetObject("BeamDataIndex", beam_index);
+  if (!beam_index) throw std::runtime_error("Failed to load the beam data"
+    " index from the file \"" + beam_data_filename +'\"');
 
   TFile out_file(output_filename.c_str(), "recreate");
   TTree* out_tree = new TTree("pot_tree", "Protons on target data");
@@ -114,8 +99,8 @@ void readout_pot(annie::RawReader& reader,
     std::cout << "Retrieved raw readout entry "
       << readout_entry << '\n';
 
-    const annie::RawCard& first_card = raw_readout->cards().cbegin()->second;
-    size_t num_minibuffers = first_card.num_minibuffers();
+    size_t num_minibuffers
+      = raw_readout->card(TRIGGER_TIME_CARD).num_minibuffers();
 
     // Loop over each of the minibuffers for the current readout
     for (size_t mb = 0; mb < num_minibuffers; ++mb) {
@@ -125,8 +110,9 @@ void readout_pot(annie::RawReader& reader,
       // TODO: consider using an average over the cards or something else more
       // sophisticated
       // TODO: consider rounding to the nearest ms instead of truncating
-      unsigned long long ms_since_epoch = first_card.trigger_time(mb)
-        / THOUSAND;
+
+      unsigned long long ms_since_epoch
+        = raw_readout->card(TRIGGER_TIME_CARD).trigger_time(mb) / MILLION;
 
       std::cout << "Finding beam status information for "
         << make_time_string(ms_since_epoch) << '\n';
@@ -158,7 +144,7 @@ void readout_pot(annie::RawReader& reader,
             beam_entry = 0;
           }
         }
-        const auto& ms_range_pair = beam_index.at(beam_entry);
+        const auto& ms_range_pair = beam_index->at(beam_entry);
         unsigned long long start_ms = ms_range_pair.first;
         unsigned long long end_ms = ms_range_pair.second;
         need_new_beam_data = (ms_since_epoch < start_ms)
