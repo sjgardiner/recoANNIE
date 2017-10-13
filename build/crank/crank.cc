@@ -590,7 +590,7 @@ int main(int argc, char* argv[]) {
   std::map<int, ValueAndError> positions_and_rates = {
 
     { 1, make_timing_distribution( { 650, 653 }, 1, out_file, false,
-      621744, 2.49e18, nonhefty_efficiency, nonhefty_soft_rate ) },
+      621744, 2.676349e18, nonhefty_efficiency, nonhefty_soft_rate ) },
 
     { 2, make_timing_distribution( { 798 }, 2, out_file, true,
       2938556, 1.42e19, hefty_efficiency, nonhefty_soft_rate )  },
