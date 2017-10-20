@@ -586,6 +586,21 @@ int main(int argc, char* argv[]) {
     // { 9, { -146.1, 0.0, 276.38  } },
   };
 
+  // Water thickness (inches) for each NCV position. The first value is
+  // vertical (overburden), the second is horizontal (shielding on beam side)
+  const std::map<int, std::array<double, 2> > position_water_thickness {
+    { 1, {  2.25, 40.8125 } },
+    { 2, { 54.25, 40.8125 } },
+    { 3, { 54.25,  3.8125 } },
+    { 4, { 14.25, 40.8125 } },
+    { 5, { 26.25, 40.8125 } },
+    { 6, {  8.25, 40.8125 } },
+    { 7, { 54.25, 22.8125 } },
+    { 8, {  2.25, 22.8125 } }
+    // "Position 9" is non-Hefty data at position #2
+    // { 9, { 54.25, 40.8125 } },
+  };
+
   // Make the rate plots
   std::map<int, ValueAndError> positions_and_rates = {
 
@@ -629,7 +644,7 @@ int main(int argc, char* argv[]) {
     std::cout << "NCV position #" << pos << ": " << rate << " neutrons / POT\n";
 
     TGraphErrors* horiz_gr = new TGraphErrors(1);
-    horiz_gr->SetPoint(0, MM_TO_CM * position_coordinates.at(pair.first).at(0),
+    horiz_gr->SetPoint(0, position_water_thickness.at(pair.first).at(1),
       rate);
     horiz_gr->SetPointError(0, ASSUMED_NCV_HORIZONTAL_POSITION_ERROR,
       rate_error);
@@ -637,7 +652,7 @@ int main(int argc, char* argv[]) {
     horiz_gr->SetMarkerStyle(20);
 
     TGraphErrors* vert_gr = new TGraphErrors(1);
-    vert_gr->SetPoint(0, MM_TO_CM * position_coordinates.at(pair.first).at(2),
+    vert_gr->SetPoint(0, position_water_thickness.at(pair.first).at(0),
       rate);
     vert_gr->SetPointError(0, ASSUMED_NCV_VERTICAL_POSITION_ERROR, rate_error);
     vert_gr->SetMarkerColor(pos);
@@ -652,10 +667,10 @@ int main(int argc, char* argv[]) {
   out_file.cd();
 
   horizontal_graph.SetTitle("NCV background neutron rates;"
-    " NCV horizontal distance from tank center (cm); neutrons / POT");
+    " Water thickness bewteen NCV and beam side of tank (in); neutrons / POT");
 
   vertical_graph.SetTitle("NCV background neutron rates;"
-    " NCV center height (cm); neutrons / POT");
+    " NCV water overburden (in); neutrons / POT");
 
   horizontal_graph.Write("horizontal_graph");
   vertical_graph.Write("vertical_graph");
