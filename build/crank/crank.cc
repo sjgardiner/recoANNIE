@@ -40,6 +40,7 @@ constexpr double HEFTY_FIT_START_TIME = 1e4; // ns
 constexpr double FIT_END_TIME = 8e4; // ns
 
 constexpr double MM_TO_CM = 1e-1;
+constexpr double CM_TO_IN = 1. / 2.54;
 constexpr double ASSUMED_NCV_HORIZONTAL_POSITION_ERROR = 3.; // cm
 constexpr double ASSUMED_NCV_VERTICAL_POSITION_ERROR = 3.; // cm
 
@@ -49,74 +50,45 @@ constexpr int TANK_CHARGE_WINDOW_LENGTH = 40; // ns
 constexpr int UNIQUE_WATER_PMT_CUT = 8; // PMTs
 constexpr double TANK_CHARGE_CUT = 3.; // nC
 
-constexpr unsigned short PULSE_TOO_BIG = 430; // ADC counts
-
 constexpr long long COINCIDENCE_TOLERANCE = 40; // ns
 
-constexpr double SIGNAL_WINDOW_TIME = 6e4; // ns
+constexpr unsigned int NONHEFTY_BACKGROUND_START_TIME = 10; // ns
+constexpr unsigned int NONHEFTY_BACKGROUND_END_TIME = 8000; // ns
+
+constexpr unsigned int NONHEFTY_SIGNAL_START_TIME = 20000; // ns
+constexpr unsigned int NONHEFTY_SIGNAL_END_TIME = 80000; // ns
+
+// These times are relative to the start of a beam minibuffer
+constexpr unsigned int HEFTY_BACKGROUND_START_TIME = 10; // ns
+constexpr unsigned int HEFTY_BACKGROUND_END_TIME = 340; // ns
+
+constexpr unsigned int HEFTY_SIGNAL_START_TIME = 10000; // ns
+constexpr unsigned int HEFTY_SIGNAL_END_TIME = 70000; // ns
 
 struct ValueAndError {
   double value;
   double error;
   ValueAndError(double val = 0., double err = 0.) : value(val),
     error(err) {}
+  void clear() {
+    value = 0.;
+    error = 0.;
+  }
+  ValueAndError& operator*=(double factor) {
+    value *= factor;
+    error *= factor;
+    return *this;
+  }
+  ValueAndError operator-(const ValueAndError& other) {
+    return ValueAndError(value - other.value,
+      std::sqrt( std::pow(error, 2) + std::pow(other.error, 2) ));
+  }
+
 };
 
-ValueAndError neutron_excess(TH1D& hist, bool hefty_mode)
-{
-  int b_low, b_high, Nb, s_low, s_high, Ns;
-  if (!hefty_mode) {
-    // Search for background counts on [800, 8e3) ns
-    b_low = hist.FindBin(800.);
-    b_high = hist.FindBin(8e3);
-    Nb = b_high - b_low;
-
-    // Search for signal counts on [2e4, 8e4) ns
-    s_low = hist.FindBin(2e4);
-    s_high = hist.FindBin(8e4);
-    Ns = s_high - s_low;
-  }
-  else { // Hefty mode
-
-    // Search for background counts on [7.28e4, 8e4) ns
-    b_low = hist.FindBin(7.28e4);
-    b_high = hist.FindBin(8e4);
-    Nb = b_high - b_low;
-
-    // Search for signal counts on [1e4, 7e4) ns
-    // (actually [9.6e3, 6.96e4) when using 100 bins)
-    s_low = hist.FindBin(1e4);
-    s_high = hist.FindBin(7e4);
-    Ns = s_high - s_low;
-  }
-
-  double sum_bi = 0.;
-  double sum_nj = 0.;
-
-  // Versions of the variables above that always assume an error of 1
-  // when the bin count is zero.
-  // TODO: revisit this, consider reverting to previous procedure
-  double error_sum_bi = 0.;
-  double error_sum_nj = 0.;
-
-  // TODO: include background subtraction again
-
-  //for (int i = b_low; i < b_high; ++i) {
-  //  sum_bi += hist.GetBinContent(i);
-  //  error_sum_bi += std::max(hist.GetBinContent(i), 1.);
-  //}
-
-  for (int j = s_low; j < s_high; ++j) {
-    sum_nj += hist.GetBinContent(j);
-    error_sum_nj += std::max(hist.GetBinContent(j), 1.);
-  }
-
-  double Bbin = sum_bi / Nb;
-
-  double S = sum_nj - Ns * Bbin;
-  double S_error = std::sqrt( Ns * error_sum_bi / (Nb*Nb) + error_sum_nj);
-
-  return ValueAndError(S, S_error);
+std::ostream& operator<<(std::ostream& out, const ValueAndError& ve) {
+  out << ve.value << " ± " << ve.error;
+  return out;
 }
 
 // Put all analysis cuts here (will be applied for both Hefty and non-Hefty
@@ -133,11 +105,6 @@ bool approve_event(double event_time, double old_time, const annie::RecoPulse&
 
   if (num_unique_water_pmts >= UNIQUE_WATER_PMT_CUT) return false;
   if (tank_charge >= TANK_CHARGE_CUT) return false;
-
-  //// Veto the entire readout if there is a really big NCV PMT #1 pulse
-  //for (const auto& pulse : readout.get_pulses(4, 1, minibuffer_index)) {
-  //  if (pulse.raw_amplitude() > PULSE_TOO_BIG) return false;
-  //}
 
   // NCV coincidence cut
   long long ncv1_time = first_ncv1_pulse.start_time();
@@ -157,8 +124,12 @@ bool approve_event(double event_time, double old_time, const annie::RecoPulse&
 
 
 TH1D make_nonhefty_timing_hist(TChain& reco_readout_chain,
-  double norm_factor, const std::string& name, const std::string& title)
+  double norm_factor, const std::string& name, const std::string& title,
+  ValueAndError& raw_signal, ValueAndError& background)
 {
+  raw_signal.clear();
+  background.clear();
+
   TH1D time_hist(name.c_str(), title.c_str(), NUM_TIME_BINS, 0., 8e4);
 
   annie::RecoReadout* rr = nullptr;
@@ -183,18 +154,45 @@ TH1D make_nonhefty_timing_hist(TChain& reco_readout_chain,
         time_hist.Fill(event_time);
 
         old_time = event_time;
+
+        size_t start_time = pulse.start_time();
+        if (start_time >= NONHEFTY_BACKGROUND_START_TIME
+          && start_time < NONHEFTY_BACKGROUND_END_TIME) background.value += 1.;
+
+        if (start_time >= NONHEFTY_SIGNAL_START_TIME
+          && start_time < NONHEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
       }
     }
   }
+
+  // Poisson errors
+  background.error = std::sqrt(background.value);
+  raw_signal.error = std::sqrt(raw_signal.value);
+
+  double background_factor = static_cast<double>( NONHEFTY_SIGNAL_END_TIME
+    - NONHEFTY_SIGNAL_START_TIME) / (num_entries
+    * (NONHEFTY_BACKGROUND_END_TIME - NONHEFTY_BACKGROUND_START_TIME) );
+
+  background *= background_factor * norm_factor;
+
+  raw_signal *= norm_factor;
 
   time_hist.Scale(norm_factor);
   return time_hist;
 }
 
+// Returns a histogram of the event time distribution for Hefty mode data.
+// Also estimates the average number of background events per bin using
+// the pre-trigger portion of the beam minibuffers. This estimate is stored
+// in the variable background_per_bin.
 TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
   TChain& heftydb_chain, double norm_factor, const std::string& name,
-  const std::string& title)
+  const std::string& title, ValueAndError& raw_signal,
+  ValueAndError& background)
 {
+  raw_signal.clear();
+  background.clear();
+
   TH1D time_hist(name.c_str(), title.c_str(), NUM_TIME_BINS, 0., 8e4);
 
   annie::RecoReadout* rr = nullptr;
@@ -211,6 +209,9 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
   heftydb_chain.SetBranchAddress("More", &db_More);
 
   int num_entries = reco_readout_chain.GetEntries();
+
+  int num_beam_minibuffers = 0;
+
   for (int i = 0; i < num_entries; ++i) {
     if (i % 1000 == 0) std::cout << "Entry " << i << " of "
       << num_entries << '\n';
@@ -231,6 +232,9 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
       if (db_Label[m] != BEAM_MINIBUFFER_LABEL
         && db_Label[m] != SOURCE_MINIBUFFER_LABEL
         && db_Label[m] != NCV_MINIBUFFER_LABEL) continue;
+
+      else if (db_Label[m] == BEAM_MINIBUFFER_LABEL)
+        ++num_beam_minibuffers;
 
       const std::vector<annie::RecoPulse>& ncv1_pulses
         = rr->get_pulses(4, 1, m);
@@ -253,12 +257,34 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
           time_hist.Fill(event_time);
 
           old_time = event_time;
+
+          size_t mb_start_time = pulse.start_time();
+          if (mb_start_time >= HEFTY_BACKGROUND_START_TIME
+            && mb_start_time < HEFTY_BACKGROUND_END_TIME)
+          {
+            background.value += 1.;
+          }
+
+          if (mb_start_time >= HEFTY_SIGNAL_START_TIME
+            && mb_start_time < HEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
         }
       }
     }
   }
 
+  // Poisson errors
+  background.error = std::sqrt(background.value);
+  raw_signal.error = std::sqrt(raw_signal.value);
+
+  double background_factor = static_cast<double>( HEFTY_SIGNAL_END_TIME
+    - HEFTY_SIGNAL_START_TIME) / (num_beam_minibuffers
+    * (HEFTY_BACKGROUND_END_TIME - HEFTY_BACKGROUND_START_TIME) );
+
+  background *= background_factor * norm_factor;
+  raw_signal *= norm_factor;
+
   time_hist.Scale(norm_factor);
+
   return time_hist;
 }
 
@@ -271,10 +297,11 @@ double make_efficiency_plot(TFile& output_file) {
   source_data_chain.Add("/annie/data/users/gardiner/reco-annie/"
     "source_data_pos1.root");
 
+  ValueAndError dummy1, dummy2;
   std::cout << "Analyzing position #1 source data\n";
   TH1D source_data_hist = make_nonhefty_timing_hist(source_data_chain,
     1. / source_data_chain.GetEntries(), "nonhefty_pos1_source_data_hist",
-    "Position #1 source data event times");
+    "Position #1 source data event times", dummy1, dummy2);
 
   // TODO: go back to using position #8 source data when you finish
   // the new RAT-PAC simulation
@@ -365,10 +392,11 @@ double make_hefty_efficiency_plot(TFile& output_file) {
     "Label[] == 4", "goff");
   double norm_factor = 1. / number_of_source_triggers;
 
+  ValueAndError dummy1, dummy2;
   std::cout << "Analyzing position #8 source data\n";
   TH1D source_data_hist = make_hefty_timing_hist(source_data_chain,
     source_heftydb_chain, norm_factor, "hefty_pos8_source_data_hist",
-    "Position #8 source data event times");
+    "Position #8 source data event times", dummy1, dummy2);
 
   // TODO: redo simulation with position #8 HeftySource configuration
   std::cout << "Opening FREYA + RAT-PAC simulation results\n";
@@ -433,8 +461,7 @@ double make_hefty_efficiency_plot(TFile& output_file) {
 // Returns the estimated neutron event rate (in neutrons / POT)
 ValueAndError make_timing_distribution(
   const std::initializer_list<int>& runs, int ncv_position, TFile& output_file,
-  bool hefty_mode, long spills, double pot, double efficiency,
-  double background_events_per_ns)
+  bool hefty_mode, long /*spills*/, double pot, double efficiency)
 {
   TChain rch("reco_readout_tree");
   TChain hch("heftydb");
@@ -464,51 +491,28 @@ ValueAndError make_timing_distribution(
 
   std::cout << "Creating " << title << '\n';
 
-  std::string func_name = "f1_pos" + pos_str;
-  TF1 temp_f1(pos_str.c_str(), "[0]*exp(-x / [1]) + [2]", 0., 1e5);
-  temp_f1.SetParameters(500., 1e4, 20.);
-
   std::unique_ptr<TH1D> temp_hist = std::make_unique<TH1D>();
-  ValueAndError rate_with_error;
-  if (!hefty_mode) {
-    *temp_hist = make_nonhefty_timing_hist(rch, 1., name, title);
-    temp_hist->Fit(&temp_f1, "IL", "", NONHEFTY_FIT_START_TIME, FIT_END_TIME);
-    // TODO: do something with the fit result
-    rate_with_error = neutron_excess(*temp_hist, false);
-  }
-  else {
-    *temp_hist = make_hefty_timing_hist(rch, hch, 1., name, title);
-    temp_hist->Fit(&temp_f1, "IL", "", HEFTY_FIT_START_TIME, FIT_END_TIME);
-    // TODO: do something with the fit result
-    rate_with_error = neutron_excess(*temp_hist, true);
-  }
-
-  // TODO: scrutinize this carefully
-  double expected_background_events = SIGNAL_WINDOW_TIME
-    * background_events_per_ns * spills;
-  std::cout << "DEBUG: rate = " << rate_with_error.value << " +- "
-    << rate_with_error.error << ", bckgd = " << expected_background_events
-    << '\n';
-
-  // Background event counts are distributed according to a Poisson
-  // distribution, so the error on the expected number of background counts is
-  // the square root of the mean
-  //DEBUG rate_with_error.value -= expected_background_events;
-  //DEBUG rate_with_error.error += std::sqrt(expected_background_events);
+  ValueAndError raw_signal;
+  ValueAndError background;
 
   double norm_factor = 1. / (pot * efficiency);
 
-  rate_with_error.value *= norm_factor;
-  rate_with_error.error *= norm_factor;
+  if (!hefty_mode) *temp_hist = make_nonhefty_timing_hist(rch, norm_factor,
+    name, title, raw_signal, background);
 
-  temp_hist->Scale(norm_factor);
+  else *temp_hist = make_hefty_timing_hist(rch, hch, norm_factor, name, title,
+    raw_signal, background);
+
   temp_hist->GetXaxis()->SetTitle("time (ns)");
   temp_hist->GetYaxis()->SetTitle("events / POT");
 
   output_file.cd();
   temp_hist->Write();
 
-  return rate_with_error;
+  std::cout << "Raw event rate = " << raw_signal << " events / POT\n";
+  std::cout << "Background = " << background << " events / POT\n";
+
+  return raw_signal - background;
 }
 
 // Returns the "soft" event rate in events / ns
@@ -562,7 +566,7 @@ int main(int argc, char* argv[]) {
 
   TFile out_file(argv[1], "recreate");
 
-  double nonhefty_soft_rate = compute_nonhefty_soft_rate();
+  //double nonhefty_soft_rate = compute_nonhefty_soft_rate();
 
   double nonhefty_efficiency = make_efficiency_plot(out_file);
 
@@ -605,29 +609,29 @@ int main(int argc, char* argv[]) {
   std::map<int, ValueAndError> positions_and_rates = {
 
     { 1, make_timing_distribution( { 650, 653 }, 1, out_file, false,
-      621744, 2.676349e18, nonhefty_efficiency, nonhefty_soft_rate ) },
+      621744, 2.676349e18, nonhefty_efficiency ) },
 
     { 2, make_timing_distribution( { 798 }, 2, out_file, true,
-      2938556, 1.42e19, hefty_efficiency, nonhefty_soft_rate )  },
+      2938556, 1.42e19, hefty_efficiency )  },
 
     { 3, make_timing_distribution( { 803 }, 3, out_file, true,
-      2296022, 1.33e19, hefty_efficiency, nonhefty_soft_rate )  },
+      2296022, 1.33e19, hefty_efficiency )  },
 
     { 4, make_timing_distribution( { 808, 812 }, 4, out_file, true,
-      3801388, 2.43e19, hefty_efficiency, nonhefty_soft_rate ) },
+      3801388, 2.43e19, hefty_efficiency ) },
 
     { 5, make_timing_distribution( { 813 }, 5, out_file, true,
-      2233860, 1.34e19, hefty_efficiency, nonhefty_soft_rate ) },
+      2233860, 1.34e19, hefty_efficiency ) },
 
     { 6, make_timing_distribution( { 814 }, 6, out_file, true,
-      1070723, 6.20e18, hefty_efficiency, nonhefty_soft_rate ) },
+      1070723, 6.20e18, hefty_efficiency ) },
 
     { 7, make_timing_distribution( { 815 }, 7, out_file, true,
-      697089, 4.05e18, hefty_efficiency, nonhefty_soft_rate ) },
+      697089, 4.05e18, hefty_efficiency ) },
 
     // "Position 9" is non-Hefty data at position #2 (for testing)
     //{ 9, make_timing_distribution( { 705 }, 9, out_file, false,
-    //  179272, 6.6195e17, nonhefty_efficiency, nonhefty_soft_rate ) },
+    //  179272, 6.6195e17, nonhefty_efficiency ) },
   };
 
   TMultiGraph horizontal_graph;
@@ -641,12 +645,13 @@ int main(int argc, char* argv[]) {
     int pos = pair.first;
     double rate = pair.second.value;
     double rate_error = pair.second.error;
-    std::cout << "NCV position #" << pos << ": " << rate << " neutrons / POT\n";
+    std::cout << "NCV position #" << pos << ": " << pair.second
+      << " neutrons / POT\n";
 
     TGraphErrors* horiz_gr = new TGraphErrors(1);
     horiz_gr->SetPoint(0, position_water_thickness.at(pair.first).at(1),
       rate);
-    horiz_gr->SetPointError(0, ASSUMED_NCV_HORIZONTAL_POSITION_ERROR,
+    horiz_gr->SetPointError(0, CM_TO_IN * ASSUMED_NCV_HORIZONTAL_POSITION_ERROR,
       rate_error);
     horiz_gr->SetMarkerColor(pos);
     horiz_gr->SetMarkerStyle(20);
@@ -654,7 +659,8 @@ int main(int argc, char* argv[]) {
     TGraphErrors* vert_gr = new TGraphErrors(1);
     vert_gr->SetPoint(0, position_water_thickness.at(pair.first).at(0),
       rate);
-    vert_gr->SetPointError(0, ASSUMED_NCV_VERTICAL_POSITION_ERROR, rate_error);
+    vert_gr->SetPointError(0, CM_TO_IN * ASSUMED_NCV_VERTICAL_POSITION_ERROR,
+      rate_error);
     vert_gr->SetMarkerColor(pos);
     vert_gr->SetMarkerStyle(20);
 
@@ -667,7 +673,7 @@ int main(int argc, char* argv[]) {
   out_file.cd();
 
   horizontal_graph.SetTitle("NCV background neutron rates;"
-    " Water thickness bewteen NCV and beam side of tank (in); neutrons / POT");
+    " Water thickness between NCV and beam side of tank (in); neutrons / POT");
 
   vertical_graph.SetTitle("NCV background neutron rates;"
     " NCV water overburden (in); neutrons / POT");
