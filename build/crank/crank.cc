@@ -44,7 +44,7 @@ constexpr double CM_TO_IN = 1. / 2.54;
 constexpr double ASSUMED_NCV_HORIZONTAL_POSITION_ERROR = 3.; // cm
 constexpr double ASSUMED_NCV_VERTICAL_POSITION_ERROR = 3.; // cm
 
-constexpr int NUM_TIME_BINS = 100;
+constexpr int NUM_TIME_BINS = 2000;
 
 constexpr int TANK_CHARGE_WINDOW_LENGTH = 40; // ns
 constexpr int UNIQUE_WATER_PMT_CUT = 8; // PMTs
@@ -169,9 +169,9 @@ TH1D make_nonhefty_timing_hist(TChain& reco_readout_chain,
   background.error = std::sqrt(background.value);
   raw_signal.error = std::sqrt(raw_signal.value);
 
-  double background_factor = static_cast<double>( NONHEFTY_SIGNAL_END_TIME
-    - NONHEFTY_SIGNAL_START_TIME) / (num_entries
-    * (NONHEFTY_BACKGROUND_END_TIME - NONHEFTY_BACKGROUND_START_TIME) );
+  double background_factor = static_cast<double>(NONHEFTY_SIGNAL_END_TIME
+    - NONHEFTY_SIGNAL_START_TIME) / (NONHEFTY_BACKGROUND_END_TIME
+    - NONHEFTY_BACKGROUND_START_TIME);
 
   background *= background_factor * norm_factor;
 
@@ -265,8 +265,8 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
             background.value += 1.;
           }
 
-          if (mb_start_time >= HEFTY_SIGNAL_START_TIME
-            && mb_start_time < HEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
+          if (event_time >= HEFTY_SIGNAL_START_TIME
+            && event_time < HEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
         }
       }
     }
@@ -276,9 +276,13 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
   background.error = std::sqrt(background.value);
   raw_signal.error = std::sqrt(raw_signal.value);
 
-  double background_factor = static_cast<double>( HEFTY_SIGNAL_END_TIME
-    - HEFTY_SIGNAL_START_TIME) / (num_beam_minibuffers
-    * (HEFTY_BACKGROUND_END_TIME - HEFTY_BACKGROUND_START_TIME) );
+  std::cout << "Background counts = " << background << '\n';
+  std::cout << "Raw signal counts = " << raw_signal << '\n';
+
+  double background_factor = static_cast<double>(HEFTY_SIGNAL_END_TIME
+    - HEFTY_SIGNAL_START_TIME) / (HEFTY_BACKGROUND_END_TIME
+    - HEFTY_BACKGROUND_START_TIME);
+  std::cout << "Background factor = " << background_factor << '\n';
 
   background *= background_factor * norm_factor;
   raw_signal *= norm_factor;
@@ -558,6 +562,8 @@ double compute_nonhefty_soft_rate() {
 }
 
 int main(int argc, char* argv[]) {
+
+  std::cout << std::scientific;
 
   if (argc < 2) {
     std::cout << "Usage: crank OUTPUT_FILE\n";
