@@ -26,25 +26,28 @@
 
 constexpr double VETO_TIME = 1e3; // ns
 
+// Hefty mode minibuffer labels
+constexpr int UNKNOWN_MINIBUFFER_LABEL = 0;
 constexpr int BEAM_MINIBUFFER_LABEL = 1;
 constexpr int NCV_MINIBUFFER_LABEL = 2;
 constexpr int SOURCE_MINIBUFFER_LABEL = 4;
+constexpr int COSMIC_MINIBUFFER_LABEL = 3;
+constexpr int PERIODIC_MINIBUFFER_LABEL = 5;
+constexpr int SOFTWARE_MINIBUFFER_LABEL = 7;
+constexpr int MINRATE_MINIBUFFER_LABEL = 6;
 
 constexpr int NUM_HEFTY_MINIBUFFERS = 40;
+constexpr double HEFTY_MINIBUFFER_TIME = 2e3; // ns
 
 constexpr double FREYA_NONHEFTY_TIME_OFFSET = 2e3; // ns
 constexpr double FREYA_HEFTY_TIME_OFFSET = 0; // ns
-
-constexpr double NONHEFTY_FIT_START_TIME = 2e4; // ns
-constexpr double HEFTY_FIT_START_TIME = 1e4; // ns
-constexpr double FIT_END_TIME = 8e4; // ns
 
 constexpr double MM_TO_CM = 1e-1;
 constexpr double CM_TO_IN = 1. / 2.54;
 constexpr double ASSUMED_NCV_HORIZONTAL_POSITION_ERROR = 3.; // cm
 constexpr double ASSUMED_NCV_VERTICAL_POSITION_ERROR = 3.; // cm
 
-constexpr int NUM_TIME_BINS = 2000;
+constexpr int NUM_TIME_BINS = 100;
 
 constexpr int TANK_CHARGE_WINDOW_LENGTH = 40; // ns
 constexpr int UNIQUE_WATER_PMT_CUT = 8; // PMTs
@@ -59,8 +62,8 @@ constexpr unsigned int NONHEFTY_SIGNAL_START_TIME = 20000; // ns
 constexpr unsigned int NONHEFTY_SIGNAL_END_TIME = 80000; // ns
 
 // These times are relative to the start of a beam minibuffer
-constexpr unsigned int HEFTY_BACKGROUND_START_TIME = 10; // ns
-constexpr unsigned int HEFTY_BACKGROUND_END_TIME = 340; // ns
+//constexpr unsigned int HEFTY_BACKGROUND_START_TIME = 10; // ns
+//constexpr unsigned int HEFTY_BACKGROUND_END_TIME = 340; // ns
 
 constexpr unsigned int HEFTY_SIGNAL_START_TIME = 10000; // ns
 constexpr unsigned int HEFTY_SIGNAL_END_TIME = 70000; // ns
@@ -68,20 +71,34 @@ constexpr unsigned int HEFTY_SIGNAL_END_TIME = 70000; // ns
 struct ValueAndError {
   double value;
   double error;
+
   ValueAndError(double val = 0., double err = 0.) : value(val),
     error(err) {}
+
   void clear() {
     value = 0.;
     error = 0.;
   }
+
   ValueAndError& operator*=(double factor) {
     value *= factor;
     error *= factor;
     return *this;
   }
+
+  ValueAndError& operator/=(double factor) {
+    value /= factor;
+    error /= factor;
+    return *this;
+  }
+
   ValueAndError operator-(const ValueAndError& other) {
     return ValueAndError(value - other.value,
       std::sqrt( std::pow(error, 2) + std::pow(other.error, 2) ));
+  }
+
+  ValueAndError operator*(double factor) {
+    return ValueAndError(factor * value, factor * error);
   }
 
 };
@@ -89,6 +106,24 @@ struct ValueAndError {
 std::ostream& operator<<(std::ostream& out, const ValueAndError& ve) {
   out << ve.value << " ± " << ve.error;
   return out;
+}
+
+// Only find Hefty mode signal events in beam, neutron calibration source, or
+// NCV self-trigger minibuffers (the current Hefty mode timing scripts do not
+// calculate a valid TSinceBeam value for the other minibuffer labels)
+bool is_signal_minibuffer(int label) {
+  if (label == BEAM_MINIBUFFER_LABEL || label == SOURCE_MINIBUFFER_LABEL
+    || label == NCV_MINIBUFFER_LABEL) return true;
+  else return false;
+}
+
+// Use the software and periodic minibuffers from Hefty mode to
+// estimate random-in-time backgrounds (minrate buffers had the LEDs enabled)
+bool is_background_minibuffer(int label) {
+  if (label == SOFTWARE_MINIBUFFER_LABEL || label == PERIODIC_MINIBUFFER_LABEL
+    || label == MINRATE_MINIBUFFER_LABEL)
+    return true;
+  else return false;
 }
 
 // Put all analysis cuts here (will be applied for both Hefty and non-Hefty
@@ -210,6 +245,7 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
 
   int num_entries = reco_readout_chain.GetEntries();
 
+  int num_background_minibuffers = 0;
   int num_beam_minibuffers = 0;
 
   for (int i = 0; i < num_entries; ++i) {
@@ -226,15 +262,8 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
 
     for (int m = 0; m < NUM_HEFTY_MINIBUFFERS; ++m) {
 
-      // Only find events in beam or NCV self-trigger minibuffers
-      // (the current Hefty mode timing scripts do not calculate a valid
-      // TSinceBeam value for the other minibuffer labels)
-      if (db_Label[m] != BEAM_MINIBUFFER_LABEL
-        && db_Label[m] != SOURCE_MINIBUFFER_LABEL
-        && db_Label[m] != NCV_MINIBUFFER_LABEL) continue;
-
-      else if (db_Label[m] == BEAM_MINIBUFFER_LABEL)
-        ++num_beam_minibuffers;
+      if ( is_background_minibuffer(db_Label[m]) ) ++num_background_minibuffers;
+      if ( db_Label[m] == BEAM_MINIBUFFER_LABEL ) ++num_beam_minibuffers;
 
       const std::vector<annie::RecoPulse>& ncv1_pulses
         = rr->get_pulses(4, 1, m);
@@ -254,35 +283,56 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
 
         if ( approve_event(event_time, old_time, pulse, *rr, m) ) {
 
-          time_hist.Fill(event_time);
 
-          old_time = event_time;
-
-          size_t mb_start_time = pulse.start_time();
-          if (mb_start_time >= HEFTY_BACKGROUND_START_TIME
-            && mb_start_time < HEFTY_BACKGROUND_END_TIME)
+          // Find signal events
+          if ( is_signal_minibuffer(db_Label[m]) )
           {
-            background.value += 1.;
+
+            time_hist.Fill(event_time);
+
+            old_time = event_time;
+
+            if (event_time >= HEFTY_SIGNAL_START_TIME
+              && event_time < HEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
+
+            //size_t mb_start_time = pulse.start_time();
+            //if (mb_start_time >= HEFTY_BACKGROUND_START_TIME
+            //  && mb_start_time < HEFTY_BACKGROUND_END_TIME)
+            //{
+            //  background.value += 1.;
+            //}
           }
 
-          if (event_time >= HEFTY_SIGNAL_START_TIME
-            && event_time < HEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
+          // Find background events
+          // TODO: decide whether to update the old event time here
+          if ( is_background_minibuffer(db_Label[m]) ) background.value += 1.;
         }
       }
     }
   }
 
   // Poisson errors
-  background.error = std::sqrt(background.value);
-  raw_signal.error = std::sqrt(raw_signal.value);
+  // TODO: consider whether you should enforce an error of 1 for zero counts
+  // as you do here.
+  background.error = std::max( 1., std::sqrt(background.value) );
+  raw_signal.error = std::max( 1., std::sqrt(raw_signal.value) );
 
-  std::cout << "Background counts = " << background << '\n';
+  std::cout << "Found " << background << " background events in "
+    << num_background_minibuffers << " minibuffers\n";
+
+  std::cout << "Found " << raw_signal << " raw signal events in "
+    << num_beam_minibuffers << " beam spills\n";
+
+  // Convert the raw number of background counts into a rate per nanosecond
+  background /= HEFTY_MINIBUFFER_TIME * num_background_minibuffers;
+
+  std::cout << "Background rate = " << background << " events / ns\n";
   std::cout << "Raw signal counts = " << raw_signal << '\n';
 
   double background_factor = static_cast<double>(HEFTY_SIGNAL_END_TIME
-    - HEFTY_SIGNAL_START_TIME) / (HEFTY_BACKGROUND_END_TIME
-    - HEFTY_BACKGROUND_START_TIME);
-  std::cout << "Background factor = " << background_factor << '\n';
+    - HEFTY_SIGNAL_START_TIME) * num_beam_minibuffers;
+  std::cout << "Expected background counts = "
+    << background * background_factor << '\n';
 
   background *= background_factor * norm_factor;
   raw_signal *= norm_factor;
@@ -614,17 +664,17 @@ int main(int argc, char* argv[]) {
   // Make the rate plots
   std::map<int, ValueAndError> positions_and_rates = {
 
-    { 1, make_timing_distribution( { 650, 653 }, 1, out_file, false,
-      621744, 2.676349e18, nonhefty_efficiency ) },
+    //{ 1, make_timing_distribution( { 650, 653 }, 1, out_file, false,
+    //  621744, 2.676349e18, nonhefty_efficiency ) },
 
-    { 2, make_timing_distribution( { 798 }, 2, out_file, true,
-      2938556, 1.42e19, hefty_efficiency )  },
+    //{ 2, make_timing_distribution( { 798 }, 2, out_file, true,
+    //  2938556, 1.42e19, hefty_efficiency )  },
 
-    { 3, make_timing_distribution( { 803 }, 3, out_file, true,
-      2296022, 1.33e19, hefty_efficiency )  },
+    //{ 3, make_timing_distribution( { 803 }, 3, out_file, true,
+    //  2296022, 1.33e19, hefty_efficiency )  },
 
-    { 4, make_timing_distribution( { 808, 812 }, 4, out_file, true,
-      3801388, 2.43e19, hefty_efficiency ) },
+    //{ 4, make_timing_distribution( { 808, 812 }, 4, out_file, true,
+    //  3801388, 2.43e19, hefty_efficiency ) },
 
     { 5, make_timing_distribution( { 813 }, 5, out_file, true,
       2233860, 1.34e19, hefty_efficiency ) },
