@@ -47,6 +47,22 @@ void annie::RawReader::set_branch_addresses() {
 }
 
 std::unique_ptr<annie::RawReadout> annie::RawReader::next() {
+  return load_next_entry(false);
+}
+
+std::unique_ptr<annie::RawReadout> annie::RawReader::previous() {
+  return load_next_entry(true);
+}
+
+std::unique_ptr<annie::RawReadout> annie::RawReader::load_next_entry(
+  bool reverse)
+{
+  int step = 1;
+  if (reverse) {
+    step = -1;
+    if (current_entry_ <= 0) return nullptr;
+    else --current_entry_;
+  }
 
   auto raw_readout = std::make_unique<annie::RawReadout>();
 
@@ -76,6 +92,13 @@ std::unique_ptr<annie::RawReadout> annie::RawReader::next() {
     // we handle separately below using the sizes obtained from this call
     // to TChain::GetEntry().
     pmt_data_chain_.GetEntry(current_entry_);
+
+    // Continue iterating over the tree until we find a readout other
+    // than the one that was last loaded
+    if (br_SequenceID_ == last_sequence_id_) {
+      current_entry_ += step;
+      continue;
+    }
 
     // Check that the variable-length array sizes are nonnegative. If one
     // of them is negative, complain.
@@ -126,8 +149,10 @@ std::unique_ptr<annie::RawReadout> annie::RawReader::next() {
       br_Data_, br_TriggerCounts_, br_Rates_);
 
     // Move on to the next TChain entry
-    ++current_entry_;
+    current_entry_ += step;
   }
 
+  // Remember the SequenceID of the last raw readout to be successfully loaded
+  last_sequence_id_ = raw_readout->sequence_id();
   return raw_readout;
 }

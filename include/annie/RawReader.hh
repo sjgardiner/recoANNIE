@@ -23,20 +23,33 @@ namespace annie {
 
     public:
 
-      // Because we are using a TChain internally, the file name(s)
-      // passed to the constructors may contain wildcards.
+      // Because we are using a TChain internally, the file name(s) passed to
+      // the constructors may contain wildcards.
       RawReader(const std::string& file_name);
       RawReader(const std::vector<std::string>& file_names);
 
+      // Retrieve the next annie::RawReadout object from the input file(s)
       std::unique_ptr<RawReadout> next();
+      std::unique_ptr<RawReadout> previous();
+
+      // Attempt to retrieve the readout with the given SequenceID from the
+      // input file(s)
+      //std::unique_ptr<RawReadout> get_sequence_id(int SequenceID);
 
     protected:
 
       void set_branch_addresses();
 
+      // Helper function for the next() and previous() methods
+      std::unique_ptr<RawReadout> load_next_entry(bool reverse);
+
       TChain pmt_data_chain_;
 
       long long current_entry_ = 0; // index of the current TChain entry
+
+      /// @brief SequenceID value for the last raw readout that was
+      /// successfully loaded from the input file(s)
+      long long last_sequence_id_ = -1;
 
       // Variables used to read from each branch of the PMTData TChain
       unsigned long long br_LastSync_;
