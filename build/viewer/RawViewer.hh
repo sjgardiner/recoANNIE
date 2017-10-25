@@ -1,6 +1,7 @@
 #pragma once
 
 // standard library includes
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -15,16 +16,29 @@
 class TGMainFrame;
 class TGraph;
 class TGWindow;
+class TGCompositeFrame;
+class TGLabel;
+class TGListBox;
+class TGTextButton;
+class TGTextView;
 class TRootEmbeddedCanvas;
 
 namespace annie {
   class RawViewer {
 
     public:
-      RawViewer(const TGWindow* p, unsigned int width,
-        unsigned int height, const std::vector<std::string>& input_files);
+      RawViewer(const std::vector<std::string>& input_files);
       virtual ~RawViewer();
-      void DoDraw();
+
+      void handle_next_button();
+      void handle_previous_button();
+      void handle_channel_selection();
+
+      void prepare_gui();
+
+      void update_plot();
+      void update_channel_selector();
+      void update_text_view();
 
     protected:
 
@@ -33,9 +47,21 @@ namespace annie {
 
       std::unique_ptr<TGraph> graph_;
 
+      int selected_channel_index_ = 0;
+
+      // Keys are TGListBox entry IDs, values are (card, channel) index pairs
+      std::map<int, std::pair<int, int> > channel_indices_;
+
       // GUI elements
       std::unique_ptr<TGMainFrame> main_frame_;
-      TRootEmbeddedCanvas* canvas_;
+      TRootEmbeddedCanvas* embedded_canvas_;
+      TGCompositeFrame* composite_frame_;
+      TGLabel* channel_selector_label_;
+      TGListBox* channel_selector_;
+      TGTextView* text_view_;
+      TGTextButton* next_button_;
+      TGTextButton* previous_button_;
+      TGLabel* canvas_label_;
 
     RQ_OBJECT("annie::RawViewer")
   };

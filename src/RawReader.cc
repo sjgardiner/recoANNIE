@@ -154,5 +154,11 @@ std::unique_ptr<annie::RawReadout> annie::RawReader::load_next_entry(
 
   // Remember the SequenceID of the last raw readout to be successfully loaded
   last_sequence_id_ = raw_readout->sequence_id();
+
+  // Move forward by one if we loaded this readout in reverse (this ensures
+  // that we begin loading the next readout from the same place regardless
+  // of the preceding direction)
+  if (reverse) ++current_entry_;
+
   return raw_readout;
 }
