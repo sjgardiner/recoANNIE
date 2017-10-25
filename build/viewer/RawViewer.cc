@@ -8,9 +8,9 @@
 #include "TRootEmbeddedCanvas.h"
 
 // viewer includes
-#include "MyViewerMainFrame.hh"
+#include "RawViewer.hh"
 
-MyViewerMainFrame::MyViewerMainFrame(const TGWindow* p, unsigned int width,
+annie::RawViewer::RawViewer(const TGWindow* p, unsigned int width,
   unsigned int height, const std::vector<std::string>& input_files)
   : reader_(input_files), main_frame_( new TGMainFrame(p, width, height) )
 {
@@ -23,7 +23,7 @@ MyViewerMainFrame::MyViewerMainFrame(const TGWindow* p, unsigned int width,
    TGHorizontalFrame* hframe = new TGHorizontalFrame(main_frame_.get(), 200,
      40);
    TGTextButton* draw = new TGTextButton(hframe, "&Draw");
-   draw->Connect("Clicked()", "MyViewerMainFrame", this, "DoDraw()");
+   draw->Connect("Clicked()", "annie::RawViewer", this, "DoDraw()");
    hframe->AddFrame( draw, new TGLayoutHints(kLHintsCenterX, 5, 5, 3, 4) );
    TGTextButton* exit = new TGTextButton(hframe, "&Exit",
      "gApplication->Terminate(0)");
@@ -43,7 +43,7 @@ MyViewerMainFrame::MyViewerMainFrame(const TGWindow* p, unsigned int width,
    main_frame_->MapWindow();
 }
 
-void MyViewerMainFrame::DoDraw() {
+void annie::RawViewer::DoDraw() {
 
   raw_readout_ = reader_.next();
 
@@ -68,12 +68,12 @@ void MyViewerMainFrame::DoDraw() {
   can->Update();
 }
 
-MyViewerMainFrame::~MyViewerMainFrame() {
+annie::RawViewer::~RawViewer() {
    // Clean up used widgets: frames, buttons, layout hints
    main_frame_->Cleanup();
 }
 
-//void MyViewerMainFrame::prepare_gui() {
+//void annie::RawViewer::prepare_gui() {
 //
 //   // Create a main frame that we'll use to run the GUI
 //   main_frame_ = new TGMainFrame(gClient->GetRoot(), 1240, 794,
@@ -112,9 +112,9 @@ MyViewerMainFrame::~MyViewerMainFrame() {
 //   if (!pmt_selector_container)
 //     throw "Unable to access PMT selector container!";
 //   else pmt_selector_container->Connect("CurrentChanged(TGFrame*)",
-//     "MyViewerMainFrame", this, "handle_pmt_selection()");
+//     "annie::RawViewer", this, "handle_pmt_selection()");
 //   // Handle mouse clicks in the list box
-//   pmt_selector_->Connect("Selected(Int_t)", "MyViewerMainFrame", this,
+//   pmt_selector_->Connect("Selected(Int_t)", "annie::RawViewer", this,
 //     "handle_pmt_selection()");
 //
 //   // Embedded canvas to use when plotting raw waveforms
@@ -166,7 +166,7 @@ MyViewerMainFrame::~MyViewerMainFrame() {
 //   next_button_->MoveResize(1080, 568, 99, 48);
 //
 //   // Set up next trigger action
-//   next_button_->Connect("Clicked()", "MyViewerMainFrame", this,
+//   next_button_->Connect("Clicked()", "annie::RawViewer", this,
 //     "handle_next_button()");
 //
 //   // "Previous trigger" button
@@ -182,7 +182,7 @@ MyViewerMainFrame::~MyViewerMainFrame() {
 //   previous_button_->MoveResize(920, 568, 99, 48);
 //
 //   // Set up previous trigger action
-//   previous_button_->Connect("Clicked()", "MyViewerMainFrame", this,
+//   previous_button_->Connect("Clicked()", "annie::RawViewer", this,
 //     "handle_previous_button()");
 //
 //   // Add the completed composite frame to the main frame.

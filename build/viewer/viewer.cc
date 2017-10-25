@@ -8,7 +8,7 @@
 #include "TGFrame.h"
 
 // viewer includes
-#include "MyViewerMainFrame.hh"
+#include "RawViewer.hh"
 
 int main(int argc, char** argv) {
 
@@ -22,8 +22,8 @@ int main(int argc, char** argv) {
     input_file_names.push_back( app.Argv(i) );
   }
 
-  auto mf = std::make_unique<MyViewerMainFrame>(gClient->GetRoot(), 200, 200,
-    input_file_names);
+  auto viewer = std::make_unique<annie::RawViewer>(gClient->GetRoot(), 200,
+   200, input_file_names);
 
   app.Run();
   return 0;

@@ -65,9 +65,9 @@ ifneq ($(MAKECMDGOALS),clean)
 
 endif
 
-dictionary: MyViewerLinkDef.hh
+dictionary: viewer_linkdef.hh
 	$(RM) dict.* dict*.pcm
-	rootcint -f dict.cc -c MyViewerMainFrame.hh MyViewerLinkDef.hh
+	rootcint -f dict.cc -c RawViewer.hh viewer_linkdef.hh
 
 dict.o: dictionary dict.cc
 	$(CXX) $(CXXFLAGS) -o $@ -I../../include -L.. $(ROOT_CXXFLAGS) \
@@ -76,13 +76,13 @@ dict.o: dictionary dict.cc
 %.o: %.cc
 	$(CXX) $(ROOT_CXXFLAGS) $(CXXFLAGS) -I../../include -o $@ -c $^
 
-viewer: ../libRecoANNIE.so viewer.cc dict.o MyViewerMainFrame.o
+viewer: ../libRecoANNIE.so viewer.cc dict.o RawViewer.o
 	$(CXX) $(CXXFLAGS) -o $@ -L.. -I../../include \
 	  -lRecoANNIE $(ROOT_CXXFLAGS) $(ROOT_LDFLAGS) \
-	  -Wl,-rpath -Wl,$(libdir):$(shell pwd) dict.o MyViewerMainFrame.o \
+	  -Wl,-rpath -Wl,$(libdir):$(shell pwd) dict.o RawViewer.o \
 	  viewer.cc
 
-.INTERMEDIATE: dict.o MyViewerMainFrame.o dict.cc
+.INTERMEDIATE: dict.o RawViewer.o dict.cc
 
 .PHONY: clean
 
