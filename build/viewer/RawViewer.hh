@@ -4,6 +4,7 @@
 #include <map>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <vector>
 
 // ROOT includes
@@ -49,8 +50,9 @@ namespace annie {
 
       int selected_channel_index_ = 0;
 
-      // Keys are TGListBox entry IDs, values are (card, channel) index pairs
-      std::map<int, std::pair<int, int> > channel_indices_;
+      // Keys are TGListBox entry IDs, values are (card, channel, minibuffer)
+      // index tuples
+      std::map<int, std::tuple<int, int, int> > channel_indices_;
 
       // GUI elements
       std::unique_ptr<TGMainFrame> main_frame_;

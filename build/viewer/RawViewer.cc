@@ -62,12 +62,13 @@ void annie::RawViewer::update_plot() {
   TCanvas* can = embedded_canvas_->GetCanvas();
   can->cd();
 
-  auto pair = channel_indices_.at(selected_channel_index_);
-  int card_id = pair.first;
-  int channel_id = pair.second;
+  auto triple = channel_indices_.at(selected_channel_index_);
+  int card_id = std::get<0>(triple);
+  int channel_id = std::get<1>(triple);
+  int minibuffer_id = std::get<2>(triple);
 
-  const std::vector<unsigned short>& mb_data
-    = raw_readout_->card(card_id).channel(channel_id).minibuffer_data(0);
+  const std::vector<unsigned short>& mb_data = raw_readout_->card(card_id)
+    .channel(channel_id).minibuffer_data(minibuffer_id);
 
   size_t num_points = mb_data.size();
   graph_.reset( new TGraph(num_points) );
@@ -233,22 +234,27 @@ void annie::RawViewer::update_channel_selector() {
   // This has the benefit that signal handlers can immediately access
   // the correct PMT simply by knowing its list box item ID.
   TString dummy_str;
-  int num_channels = 0;
+  int num_listbox_entries = 0;
   for ( const auto& card_pair : raw_readout_->cards() ) {
     int card_id = card_pair.first;
     for ( const auto& channel_pair : card_pair.second.channels() ) {
       int channel_id = channel_pair.first;
-      dummy_str.Form("Card %d Channel %d", card_id, channel_id);
-      channel_selector_->AddEntry(dummy_str.Data(), num_channels);
-      channel_indices_[num_channels] = std::make_pair(card_id, channel_id);
-      ++num_channels;
+      for (unsigned int m = 0; m < channel_pair.second.num_minibuffers(); ++m)
+      {
+        dummy_str.Form("Card %d Channel %d Minibuffer %d", card_id,
+          channel_id, m);
+        channel_selector_->AddEntry(dummy_str.Data(), num_listbox_entries);
+        channel_indices_[num_listbox_entries] = std::make_tuple(card_id,
+          channel_id, m);
+        ++num_listbox_entries;
+      }
     }
   }
 
   // Keep the index of the selected channel the same if possible.
   // If we get an invalid channel index, make it something reasonable.
-  if (selected_channel_index_ >= num_channels)
-    selected_channel_index_ = num_channels - 1;
+  if (selected_channel_index_ >= num_listbox_entries)
+    selected_channel_index_ = num_listbox_entries - 1;
   if (selected_channel_index_ < 0) selected_channel_index_ = 0;
   channel_selector_->Select(selected_channel_index_);
 
@@ -260,12 +266,14 @@ void annie::RawViewer::update_channel_selector() {
 void annie::RawViewer::update_text_view() {
   text_view_->Clear();
 
-  auto pair = channel_indices_.at(selected_channel_index_);
-  int card_id = pair.first;
-  int channel_id = pair.second;
+  auto triple = channel_indices_.at(selected_channel_index_);
+  int card_id = std::get<0>(triple);
+  int channel_id = std::get<1>(triple);
+  int minibuffer_id = std::get<2>(triple);
 
   TString message;
-  message.Form("\nShowing card ID = %d, channel = %d\n", card_id, channel_id);
+  message.Form("\nShowing card ID = %d, channel = %d, minibuffer = %d\n",
+    card_id, channel_id, minibuffer_id);
 
   text_view_->LoadBuffer(message.Data());
 }
