@@ -217,9 +217,6 @@ TH1D make_nonhefty_timing_hist(TChain& reco_readout_chain,
 }
 
 // Returns a histogram of the event time distribution for Hefty mode data.
-// Also estimates the average number of background events per bin using
-// the pre-trigger portion of the beam minibuffers. This estimate is stored
-// in the variable background_per_bin.
 TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
   TChain& heftydb_chain, double norm_factor, const std::string& name,
   const std::string& title, ValueAndError& raw_signal,
@@ -237,11 +234,13 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
   int db_Label[40];
   int db_TSinceBeam[40]; // ns
   int db_More[40]; // Only element 39 is currently meaningful
+  unsigned long long db_Time[40]; // ns since Unix epoch
 
   heftydb_chain.SetBranchAddress("SequenceID", &db_SequenceID);
   heftydb_chain.SetBranchAddress("Label", &db_Label);
   heftydb_chain.SetBranchAddress("TSinceBeam", &db_TSinceBeam);
   heftydb_chain.SetBranchAddress("More", &db_More);
+  heftydb_chain.SetBranchAddress("Time", &db_Time);
 
   int num_entries = reco_readout_chain.GetEntries();
 
@@ -260,10 +259,25 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
         " and heftydb trees\n");
     }
 
+    // Flag that indicates whether the value of TSinceBeam refers to the
+    // time since the last cosmic trigger (true) or the time since the
+    // last beam trigger (false). For the cosmic case, the Time branch
+    // values are used to approximate the time since the last beam trigger.
+    bool is_cosmic = false;
+
+    unsigned long long last_beam_time = 0;
+
     for (int m = 0; m < NUM_HEFTY_MINIBUFFERS; ++m) {
 
       if ( is_background_minibuffer(db_Label[m]) ) ++num_background_minibuffers;
-      if ( db_Label[m] == BEAM_MINIBUFFER_LABEL ) ++num_beam_minibuffers;
+      else if ( db_Label[m] == BEAM_MINIBUFFER_LABEL ) {
+        ++num_beam_minibuffers;
+        is_cosmic = false;
+        last_beam_time = db_Time[m];
+      }
+      else if (db_Label[m] == COSMIC_MINIBUFFER_LABEL) {
+        is_cosmic = true;
+      }
 
       const std::vector<annie::RecoPulse>& ncv1_pulses
         = rr->get_pulses(4, 1, m);
@@ -272,13 +286,25 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
 
       double old_time = std::numeric_limits<double>::lowest(); // ns
       for (const auto& pulse : ncv1_pulses) {
-        double event_time = static_cast<double>( pulse.start_time() );
+        double event_time = static_cast<double>( pulse.start_time() ); // ns
 
         // Add the offset of the current minibuffer to the pulse start time.
         // Assume an offset of zero for source trigger minibuffers (TSinceBeam
         // is not currently calculated for those).
         if (db_Label[m] != SOURCE_MINIBUFFER_LABEL) {
-          event_time += db_TSinceBeam[m];
+
+          // Use the TSinceBeam value unless the last NCV self-trigger window
+          // to be opened was a cosmic trigger window.
+          if (!is_cosmic) event_time += db_TSinceBeam[m];
+
+          else {
+            // If we're within a cosmic trigger window, use the minibuffer
+            // timestamps to approximate TSinceBeam
+            if (db_Time[m] < last_beam_time) throw std::runtime_error(
+              "Invalid minibuffer timestamp encountered!");
+            event_time += db_Time[m] - last_beam_time;
+          }
+
         }
 
         if ( approve_event(event_time, old_time, pulse, *rr, m) ) {
@@ -664,17 +690,17 @@ int main(int argc, char* argv[]) {
   // Make the rate plots
   std::map<int, ValueAndError> positions_and_rates = {
 
-    //{ 1, make_timing_distribution( { 650, 653 }, 1, out_file, false,
-    //  621744, 2.676349e18, nonhefty_efficiency ) },
+    { 1, make_timing_distribution( { 650, 653 }, 1, out_file, false,
+      621744, 2.676349e18, nonhefty_efficiency ) },
 
-    //{ 2, make_timing_distribution( { 798 }, 2, out_file, true,
-    //  2938556, 1.42e19, hefty_efficiency )  },
+    { 2, make_timing_distribution( { 798 }, 2, out_file, true,
+      2938556, 1.42e19, hefty_efficiency )  },
 
-    //{ 3, make_timing_distribution( { 803 }, 3, out_file, true,
-    //  2296022, 1.33e19, hefty_efficiency )  },
+    { 3, make_timing_distribution( { 803 }, 3, out_file, true,
+      2296022, 1.33e19, hefty_efficiency )  },
 
-    //{ 4, make_timing_distribution( { 808, 812 }, 4, out_file, true,
-    //  3801388, 2.43e19, hefty_efficiency ) },
+    { 4, make_timing_distribution( { 808, 812 }, 4, out_file, true,
+      3801388, 2.43e19, hefty_efficiency ) },
 
     { 5, make_timing_distribution( { 813 }, 5, out_file, true,
       2233860, 1.34e19, hefty_efficiency ) },
