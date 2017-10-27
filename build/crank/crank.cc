@@ -62,8 +62,8 @@ constexpr unsigned int NONHEFTY_SIGNAL_START_TIME = 20000; // ns
 constexpr unsigned int NONHEFTY_SIGNAL_END_TIME = 80000; // ns
 
 // These times are relative to the start of a beam minibuffer
-//constexpr unsigned int HEFTY_BACKGROUND_START_TIME = 10; // ns
-//constexpr unsigned int HEFTY_BACKGROUND_END_TIME = 340; // ns
+constexpr unsigned int HEFTY_BACKGROUND_START_TIME = 10; // ns
+constexpr unsigned int HEFTY_BACKGROUND_END_TIME = 300; // ns
 
 constexpr unsigned int HEFTY_SIGNAL_START_TIME = 10000; // ns
 constexpr unsigned int HEFTY_SIGNAL_END_TIME = 70000; // ns
@@ -261,6 +261,10 @@ TH1D make_hefty_timing_hist(
   raw_signal.clear();
   background.clear();
 
+  // Extra estimate of the background, this time using the (very small)
+  // pre-beam region of beam minibuffers
+  ValueAndError pre_beam_background;
+
   TH1D time_hist(name.c_str(), title.c_str(), NUM_TIME_BINS, 0., 8e4);
 
   // Variables to read from TChain branches
@@ -415,12 +419,14 @@ TH1D make_hefty_timing_hist(
 
             else std::cerr << "WARNING: event with unknown beam spill time\n";
 
-            //size_t mb_start_time = pulse.start_time();
-            //if (mb_start_time >= HEFTY_BACKGROUND_START_TIME
-            //  && mb_start_time < HEFTY_BACKGROUND_END_TIME)
-            //{
-            //  background.value += 1.;
-            //}
+            if (db_Label[m] == BEAM_MINIBUFFER_LABEL) {
+              size_t mb_start_time = pulse.start_time();
+              if (mb_start_time >= HEFTY_BACKGROUND_START_TIME
+                && mb_start_time < HEFTY_BACKGROUND_END_TIME)
+              {
+                pre_beam_background.value += 1.;
+              }
+            }
 
           }
         }
@@ -433,6 +439,9 @@ TH1D make_hefty_timing_hist(
   // as you do here.
   background.error = std::max( 1., std::sqrt(background.value) );
   raw_signal.error = std::max( 1., std::sqrt(raw_signal.value) );
+
+  pre_beam_background.error = std::max( 1.,
+    std::sqrt(pre_beam_background.value) );
 
   std::cout << "Found " << background << " background events in "
     << num_background_minibuffers << " minibuffers\n";
@@ -450,6 +459,10 @@ TH1D make_hefty_timing_hist(
     - HEFTY_SIGNAL_START_TIME) * num_beam_minibuffers;
   std::cout << "Expected background counts = "
     << background * background_factor << '\n';
+
+  std::cout << "Pre-beam background rate = " << pre_beam_background
+    / ( static_cast<double>(HEFTY_BACKGROUND_END_TIME
+    - HEFTY_BACKGROUND_START_TIME) * num_beam_minibuffers ) << " events / ns\n";
 
   background *= background_factor * norm_factor;
   raw_signal *= norm_factor;
