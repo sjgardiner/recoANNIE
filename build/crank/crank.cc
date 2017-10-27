@@ -101,6 +101,10 @@ struct ValueAndError {
     return ValueAndError(factor * value, factor * error);
   }
 
+  ValueAndError operator/(double factor) {
+    return ValueAndError(value / factor, error / factor);
+  }
+
 };
 
 std::ostream& operator<<(std::ostream& out, const ValueAndError& ve) {
@@ -108,14 +112,14 @@ std::ostream& operator<<(std::ostream& out, const ValueAndError& ve) {
   return out;
 }
 
-// Only find Hefty mode signal events in beam, neutron calibration source, or
-// NCV self-trigger minibuffers (the current Hefty mode timing scripts do not
-// calculate a valid TSinceBeam value for the other minibuffer labels)
-bool is_signal_minibuffer(int label) {
-  if (label == BEAM_MINIBUFFER_LABEL || label == SOURCE_MINIBUFFER_LABEL
-    || label == NCV_MINIBUFFER_LABEL) return true;
-  else return false;
-}
+//// Only find Hefty mode signal events in beam, neutron calibration source, or
+//// NCV self-trigger minibuffers (the current Hefty mode timing scripts do not
+//// calculate a valid TSinceBeam value for the other minibuffer labels)
+//bool is_signal_minibuffer(int label) {
+//  if (label == BEAM_MINIBUFFER_LABEL || label == SOURCE_MINIBUFFER_LABEL
+//    || label == NCV_MINIBUFFER_LABEL) return true;
+//  else return false;
+//}
 
 // Use the software and periodic minibuffers from Hefty mode to
 // estimate random-in-time backgrounds (minrate buffers had the LEDs enabled)
@@ -157,8 +161,8 @@ bool approve_event(double event_time, double old_time, const annie::RecoPulse&
   return true;
 }
 
-
-TH1D make_nonhefty_timing_hist(TChain& reco_readout_chain,
+TH1D make_nonhefty_timing_hist(
+  std::vector<std::unique_ptr<TChain> >& reco_readout_chains,
   double norm_factor, const std::string& name, const std::string& title,
   ValueAndError& raw_signal, ValueAndError& background)
 {
@@ -168,45 +172,71 @@ TH1D make_nonhefty_timing_hist(TChain& reco_readout_chain,
   TH1D time_hist(name.c_str(), title.c_str(), NUM_TIME_BINS, 0., 8e4);
 
   annie::RecoReadout* rr = nullptr;
-  reco_readout_chain.SetBranchAddress("reco_readout", &rr);
 
-  int num_entries = reco_readout_chain.GetEntries();
-  for (int i = 0; i < num_entries; ++i) {
-    if (i % 1000 == 0) std::cout << "Entry " << i << " of "
-      << num_entries << '\n';
-    reco_readout_chain.GetEntry(i);
+  int chain_index = 0;
 
-    const std::vector<annie::RecoPulse>& ncv1_pulses
-      = rr->get_pulses(4, 1, 0);
+  long long total_entries = 0;
+  for (std::unique_ptr<TChain>& reco_readout_chain : reco_readout_chains) {
+    reco_readout_chain->SetBranchAddress("reco_readout", &rr);
+    std::cout << "Reading chain " << chain_index << '\n';
 
-    double old_time = std::numeric_limits<double>::lowest(); // ns
-    for (const auto& pulse : ncv1_pulses) {
+    long long num_entries = reco_readout_chain->GetEntries();
+    total_entries += num_entries;
+    for (int i = 0; i < num_entries; ++i) {
+      if (i % 1000 == 0) std::cout << "Entry " << i << " of "
+        << num_entries << '\n';
+      reco_readout_chain->GetEntry(i);
 
-      double event_time = static_cast<double>( pulse.start_time() );
+      const std::vector<annie::RecoPulse>& ncv1_pulses
+        = rr->get_pulses(4, 1, 0);
 
-      if ( approve_event(event_time, old_time, pulse, *rr, 0) ) {
+      double old_time = std::numeric_limits<double>::lowest(); // ns
+      for (const auto& pulse : ncv1_pulses) {
 
-        time_hist.Fill(event_time);
+        double event_time = static_cast<double>( pulse.start_time() );
 
-        old_time = event_time;
+        if ( approve_event(event_time, old_time, pulse, *rr, 0) ) {
 
-        size_t start_time = pulse.start_time();
-        if (start_time >= NONHEFTY_BACKGROUND_START_TIME
-          && start_time < NONHEFTY_BACKGROUND_END_TIME) background.value += 1.;
+          time_hist.Fill(event_time);
 
-        if (start_time >= NONHEFTY_SIGNAL_START_TIME
-          && start_time < NONHEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
+          old_time = event_time;
+
+          size_t start_time = pulse.start_time();
+          if (start_time >= NONHEFTY_BACKGROUND_START_TIME
+            && start_time < NONHEFTY_BACKGROUND_END_TIME)
+          {
+            background.value += 1.;
+          }
+
+          if (start_time >= NONHEFTY_SIGNAL_START_TIME
+            && start_time < NONHEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
+        }
       }
     }
+
+    ++chain_index;
   }
 
   // Poisson errors
   background.error = std::sqrt(background.value);
   raw_signal.error = std::sqrt(raw_signal.value);
 
+  std::cout << "Found " << background << " background events in "
+    << total_entries << " non-Hefty buffers\n";
+
+  std::cout << "Found " << raw_signal << " raw signal events in "
+    << total_entries << " non-Hefty buffers\n";
+
+  std::cout << "Background rate = " << background
+    / ( static_cast<double>(NONHEFTY_BACKGROUND_END_TIME
+    - NONHEFTY_BACKGROUND_START_TIME) * total_entries ) << " events / ns\n";
+
   double background_factor = static_cast<double>(NONHEFTY_SIGNAL_END_TIME
     - NONHEFTY_SIGNAL_START_TIME) / (NONHEFTY_BACKGROUND_END_TIME
     - NONHEFTY_BACKGROUND_START_TIME);
+
+  std::cout << "Expected background counts = "
+    << background * background_factor << '\n';
 
   background *= background_factor * norm_factor;
 
@@ -217,18 +247,24 @@ TH1D make_nonhefty_timing_hist(TChain& reco_readout_chain,
 }
 
 // Returns a histogram of the event time distribution for Hefty mode data.
-TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
-  TChain& heftydb_chain, double norm_factor, const std::string& name,
-  const std::string& title, ValueAndError& raw_signal,
+TH1D make_hefty_timing_hist(
+  std::vector<std::unique_ptr<TChain> >& reco_readout_chains,
+  std::vector<std::unique_ptr<TChain> >& heftydb_chains, double norm_factor,
+  const std::string& name, const std::string& title, ValueAndError& raw_signal,
   ValueAndError& background)
 {
+  if ( reco_readout_chains.size() != heftydb_chains.size() ) {
+    throw std::runtime_error("TChain size mismatch in make_hefty_"
+      + std::string("timing_hist()"));
+  }
+
   raw_signal.clear();
   background.clear();
 
   TH1D time_hist(name.c_str(), title.c_str(), NUM_TIME_BINS, 0., 8e4);
 
+  // Variables to read from TChain branches
   annie::RecoReadout* rr = nullptr;
-  reco_readout_chain.SetBranchAddress("reco_readout", &rr);
 
   int db_SequenceID;
   int db_Label[40];
@@ -236,90 +272,148 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
   int db_More[40]; // Only element 39 is currently meaningful
   unsigned long long db_Time[40]; // ns since Unix epoch
 
-  heftydb_chain.SetBranchAddress("SequenceID", &db_SequenceID);
-  heftydb_chain.SetBranchAddress("Label", &db_Label);
-  heftydb_chain.SetBranchAddress("TSinceBeam", &db_TSinceBeam);
-  heftydb_chain.SetBranchAddress("More", &db_More);
-  heftydb_chain.SetBranchAddress("Time", &db_Time);
+  long long num_background_minibuffers = 0;
+  long long num_beam_minibuffers = 0;
 
-  int num_entries = reco_readout_chain.GetEntries();
+  for (size_t c = 0; c < heftydb_chains.size(); ++c) {
 
-  int num_background_minibuffers = 0;
-  int num_beam_minibuffers = 0;
+    std::cout << "Reading chain #" << c << '\n';
+    auto& reco_readout_chain = reco_readout_chains.at(c);
+    auto& heftydb_chain = heftydb_chains.at(c);
 
-  for (int i = 0; i < num_entries; ++i) {
-    if (i % 1000 == 0) std::cout << "Entry " << i << " of "
-      << num_entries << '\n';
+    reco_readout_chain->SetBranchAddress("reco_readout", &rr);
 
-    reco_readout_chain.GetEntry(i);
-    heftydb_chain.GetEntry(i);
+    heftydb_chain->SetBranchAddress("SequenceID", &db_SequenceID);
+    heftydb_chain->SetBranchAddress("Label", &db_Label);
+    heftydb_chain->SetBranchAddress("TSinceBeam", &db_TSinceBeam);
+    heftydb_chain->SetBranchAddress("More", &db_More);
+    heftydb_chain->SetBranchAddress("Time", &db_Time);
 
-    if (db_SequenceID != rr->sequence_id()) {
-      throw std::runtime_error("SequenceID mismatch between the RecoReadout"
-        " and heftydb trees\n");
+    // Build index to ensure that you always step through the chains
+    // in time order (even if they've been hadd'ed together in some other
+    // order). We can exploit the auto-sorting of std::map keys here.
+    int num_heftydb_entries = heftydb_chain->GetEntries();
+
+    int num_reco_readout_entries = reco_readout_chain->GetEntries();
+    if (num_heftydb_entries != num_reco_readout_entries) {
+      throw std::runtime_error("Entry number mismatch between Hefty timing and"
+        " annie::RecoReadout chains");
     }
 
-    // Flag that indicates whether the value of TSinceBeam refers to the
-    // time since the last cosmic trigger (true) or the time since the
-    // last beam trigger (false). For the cosmic case, the Time branch
-    // values are used to approximate the time since the last beam trigger.
-    bool is_cosmic = false;
+    // Keys are SequenceIDs, values are TChain entry indices
+    std::map<int, int> sequenceID_to_entry;
+    std::cout << "Building SequenceID index\n";
+    for (int idx = 0; idx < num_heftydb_entries; ++idx) {
+      heftydb_chain->GetEntry(idx);
+      // SequenceIDs should be unique within a run. If we've mixed runs
+      // or otherwise mixed them up, complain.
+      if ( sequenceID_to_entry.count(db_SequenceID) ) throw std::runtime_error(
+        "Duplicate SequenceID value " + std::to_string(db_SequenceID)
+        + " encountered!");
 
+      sequenceID_to_entry[db_SequenceID] = idx;
+    }
+    int last_sequence_id = sequenceID_to_entry.crbegin()->first;
+
+    // TODO: consider whether you should reset this to zero for each readout.
+    // Some readouts do not contain any beam trigger minibuffers.
     unsigned long long last_beam_time = 0;
 
-    for (int m = 0; m < NUM_HEFTY_MINIBUFFERS; ++m) {
+    for (const auto& index_pair : sequenceID_to_entry) {
 
-      if ( is_background_minibuffer(db_Label[m]) ) ++num_background_minibuffers;
-      else if ( db_Label[m] == BEAM_MINIBUFFER_LABEL ) {
-        ++num_beam_minibuffers;
-        is_cosmic = false;
-        last_beam_time = db_Time[m];
+      int chain_index = index_pair.second;
+      reco_readout_chain->GetEntry(chain_index);
+      heftydb_chain->GetEntry(chain_index);
+
+      if (db_SequenceID % 1000 == 0) std::cout << "SequenceID "
+        << db_SequenceID << " of " << last_sequence_id << '\n';
+
+      if (db_SequenceID != rr->sequence_id()) {
+        throw std::runtime_error("SequenceID mismatch between the RecoReadout"
+          " and heftydb trees\n");
       }
-      else if (db_Label[m] == COSMIC_MINIBUFFER_LABEL) {
-        is_cosmic = true;
-      }
 
-      const std::vector<annie::RecoPulse>& ncv1_pulses
-        = rr->get_pulses(4, 1, m);
+      for (int m = 0; m < NUM_HEFTY_MINIBUFFERS; ++m) {
 
-      if (ncv1_pulses.empty()) continue;
+        if ( is_background_minibuffer(db_Label[m]) )
+          ++num_background_minibuffers;
 
-      double old_time = std::numeric_limits<double>::lowest(); // ns
-      for (const auto& pulse : ncv1_pulses) {
-        double event_time = static_cast<double>( pulse.start_time() ); // ns
+        // TODO: fix this for HeftySource mode
+        else if ( db_Label[m] == BEAM_MINIBUFFER_LABEL) {
+          ++num_beam_minibuffers;
+          last_beam_time = db_Time[m];
+        }
 
-        // Add the offset of the current minibuffer to the pulse start time.
-        // Assume an offset of zero for source trigger minibuffers (TSinceBeam
-        // is not currently calculated for those).
-        if (db_Label[m] != SOURCE_MINIBUFFER_LABEL) {
+        /// ******** REMOVE AFTER DEBUG
 
-          // Use the TSinceBeam value unless the last NCV self-trigger window
-          // to be opened was a cosmic trigger window.
-          if (!is_cosmic) event_time += db_TSinceBeam[m];
+        //if (m == 0) {
+        //  std::cerr << "\nSequenceID = " << db_SequenceID;
+        //  for (int k = 0; k < NUM_HEFTY_MINIBUFFERS; ++k) std::cerr << ' '
+        //    << db_Label[k];
+        //}
 
-          else {
-            // If we're within a cosmic trigger window, use the minibuffer
-            // timestamps to approximate TSinceBeam
+        //const std::vector<annie::RecoPulse>& rwm_pulses
+        //  = rr->get_pulses(21, 2, m);
+        //bool found_rwm_pulse = false;
+        //for (const auto& pulse : rwm_pulses) {
+        //  if (pulse.raw_amplitude() > 2000u) found_rwm_pulse = true;
+        //}
+        //if (found_rwm_pulse && db_Label[m] == BEAM_MINIBUFFER_LABEL)
+        //  std::cerr << " SequenceID = " << db_SequenceID << " minibuffer = "
+        //    << m << " has an empty BEAM minibuffer!\n";
+        //else if (found_rwm_pulse && db_Label[m] != BEAM_MINIBUFFER_LABEL)
+        //  std::cerr << " SequenceID = " << db_SequenceID << " minibuffer = "
+        //  << m << " has a NON-beam minibuffer " << db_Label[m] << " with an"
+        //    << " RWM pulse!\n";
+        /// ******** END REMOVE AFTER DEBUG
+
+        const std::vector<annie::RecoPulse>& ncv1_pulses
+          = rr->get_pulses(4, 1, m);
+
+        if (ncv1_pulses.empty()) continue;
+
+        double old_time = std::numeric_limits<double>::lowest(); // ns
+        for (const auto& pulse : ncv1_pulses) {
+          double event_time = static_cast<double>( pulse.start_time() ); // ns
+
+          // Add the offset of the current minibuffer to the pulse start time.
+          // Assume an offset of zero for source trigger minibuffers
+          // (TSinceBeam is not currently calculated for those).
+          if (db_Label[m] != SOURCE_MINIBUFFER_LABEL) {
+
+            if (last_beam_time == 0) {
+              std::cerr << "WARNING: Missing beam time!\n";
+            }
             if (db_Time[m] < last_beam_time) throw std::runtime_error(
               "Invalid minibuffer timestamp encountered!");
+
+            // Use the minibuffer timestamps to approximate the time since the
+            // beam trigger
             event_time += db_Time[m] - last_beam_time;
           }
 
-        }
+          if ( approve_event(event_time, old_time, pulse, *rr, m) ) {
 
-        if ( approve_event(event_time, old_time, pulse, *rr, m) ) {
+            // Only trust the event time if we know when the last beam spill
+            // occurred
+            if (last_beam_time != 0) {
+              time_hist.Fill(event_time);
 
+              old_time = event_time;
 
-          // Find signal events
-          if ( is_signal_minibuffer(db_Label[m]) )
-          {
+              if (event_time >= HEFTY_SIGNAL_START_TIME
+                && event_time < HEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
 
-            time_hist.Fill(event_time);
+              // Find background events
+              // TODO: remove hard-coded value and restore time cut
+              if ( is_background_minibuffer(db_Label[m])
+                /*&& event_time > 1e5*/)
+              {
+                background.value += 1.;
+              }
+            }
 
-            old_time = event_time;
-
-            if (event_time >= HEFTY_SIGNAL_START_TIME
-              && event_time < HEFTY_SIGNAL_END_TIME) raw_signal.value += 1.;
+            else std::cerr << "WARNING: event with unknown beam spill time\n";
 
             //size_t mb_start_time = pulse.start_time();
             //if (mb_start_time >= HEFTY_BACKGROUND_START_TIME
@@ -327,11 +421,8 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
             //{
             //  background.value += 1.;
             //}
-          }
 
-          // Find background events
-          // TODO: decide whether to update the old event time here
-          if ( is_background_minibuffer(db_Label[m]) ) background.value += 1.;
+          }
         }
       }
     }
@@ -373,14 +464,22 @@ TH1D make_hefty_timing_hist(TChain& reco_readout_chain,
 double make_efficiency_plot(TFile& output_file) {
 
   std::cout << "Opening position #1 source data\n";
-  TChain source_data_chain("reco_readout_tree");
-  source_data_chain.Add("/annie/data/users/gardiner/reco-annie/"
+
+  std::vector<std::unique_ptr<TChain> > source_data_chains;
+  source_data_chains.emplace_back(new TChain("reco_readout_tree"));
+  source_data_chains.back()->Add("/annie/data/users/gardiner/reco-annie/"
     "source_data_pos1.root");
 
   ValueAndError dummy1, dummy2;
   std::cout << "Analyzing position #1 source data\n";
-  TH1D source_data_hist = make_nonhefty_timing_hist(source_data_chain,
-    1. / source_data_chain.GetEntries(), "nonhefty_pos1_source_data_hist",
+
+  long long total_entries = 0;
+  for (const auto& sch : source_data_chains) {
+    total_entries += sch->GetEntries();
+  }
+
+  TH1D source_data_hist = make_nonhefty_timing_hist(source_data_chains,
+    1. / total_entries, "nonhefty_pos1_source_data_hist",
     "Position #1 source data event times", dummy1, dummy2);
 
   // TODO: go back to using position #8 source data when you finish
@@ -458,24 +557,28 @@ double make_efficiency_plot(TFile& output_file) {
 double make_hefty_efficiency_plot(TFile& output_file) {
 
   std::cout << "Opening position #8 source data\n";
-  TChain source_data_chain("reco_readout_tree");
-  source_data_chain.Add("/annie/data/users/gardiner/reco-annie/"
+  std::vector<std::unique_ptr<TChain> > source_data_chains;
+  source_data_chains.emplace_back(new TChain("reco_readout_tree"));
+  source_data_chains.back()->Add("/annie/data/users/gardiner/reco-annie/"
     "r830.root");
 
   std::cout << "Opening position #8 hefty timing data\n";
-  TChain source_heftydb_chain("heftydb");
-  source_heftydb_chain.Add("/annie/data/users/gardiner/reco-annie/timing/"
-    "timing_r830.root");
+  std::vector<std::unique_ptr<TChain> > source_heftydb_chains;
+  source_heftydb_chains.emplace_back(new TChain("heftydb"));
+  source_heftydb_chains.back()->Add("/annie/data/users/gardiner/reco-annie/"
+    "timing/timing_r830.root");
 
   // TODO: remove hard-coded calibration trigger label here
-  long number_of_source_triggers = source_heftydb_chain.Draw("Label[]",
-    "Label[] == 4", "goff");
+  long long number_of_source_triggers = 0;
+  for (auto& sch : source_heftydb_chains) {
+    number_of_source_triggers += sch->Draw("Label[]", "Label[] == 4", "goff");
+  }
   double norm_factor = 1. / number_of_source_triggers;
 
   ValueAndError dummy1, dummy2;
   std::cout << "Analyzing position #8 source data\n";
-  TH1D source_data_hist = make_hefty_timing_hist(source_data_chain,
-    source_heftydb_chain, norm_factor, "hefty_pos8_source_data_hist",
+  TH1D source_data_hist = make_hefty_timing_hist(source_data_chains,
+    source_heftydb_chains, norm_factor, "hefty_pos8_source_data_hist",
     "Position #8 source data event times", dummy1, dummy2);
 
   // TODO: redo simulation with position #8 HeftySource configuration
@@ -543,16 +646,19 @@ ValueAndError make_timing_distribution(
   const std::initializer_list<int>& runs, int ncv_position, TFile& output_file,
   bool hefty_mode, long /*spills*/, double pot, double efficiency)
 {
-  TChain rch("reco_readout_tree");
-  TChain hch("heftydb");
+  std::vector<std::unique_ptr<TChain> > reco_chains;
+  std::vector<std::unique_ptr<TChain> > hefty_timing_chains;
 
   for (const auto& run : runs) {
     std::stringstream temp_ss;
 
     temp_ss << "/annie/data/users/gardiner/reco-annie/r" << run << ".root";
-    rch.Add( temp_ss.str().c_str() );
+
+    reco_chains.emplace_back(new TChain("reco_readout_tree"));
+    reco_chains.back()->Add( temp_ss.str().c_str() );
 
     if (hefty_mode) {
+
       temp_ss = std::stringstream();
 
       temp_ss << "/annie/data/users/gardiner/reco-annie/timing/timing_r"
@@ -561,7 +667,8 @@ ValueAndError make_timing_distribution(
       //temp_ss << std::setfill('0') << std::setw(4);
       //temp_ss << run << "/*.root";
 
-      hch.Add( temp_ss.str().c_str() );
+      hefty_timing_chains.emplace_back(new TChain("heftydb"));
+      hefty_timing_chains.back()->Add( temp_ss.str().c_str() );
     }
   }
 
@@ -577,11 +684,11 @@ ValueAndError make_timing_distribution(
 
   double norm_factor = 1. / (pot * efficiency);
 
-  if (!hefty_mode) *temp_hist = make_nonhefty_timing_hist(rch, norm_factor,
-    name, title, raw_signal, background);
+  if (!hefty_mode) *temp_hist = make_nonhefty_timing_hist(reco_chains,
+    norm_factor, name, title, raw_signal, background);
 
-  else *temp_hist = make_hefty_timing_hist(rch, hch, norm_factor, name, title,
-    raw_signal, background);
+  else *temp_hist = make_hefty_timing_hist(reco_chains, hefty_timing_chains,
+    norm_factor, name, title, raw_signal, background);
 
   temp_hist->GetXaxis()->SetTitle("time (ns)");
   temp_hist->GetYaxis()->SetTitle("events / POT");
@@ -592,7 +699,7 @@ ValueAndError make_timing_distribution(
   std::cout << "Raw event rate = " << raw_signal << " events / POT\n";
   std::cout << "Background = " << background << " events / POT\n";
 
-  return raw_signal - background;
+  return raw_signal; //DEBUG - background;
 }
 
 // Returns the "soft" event rate in events / ns
@@ -649,6 +756,7 @@ int main(int argc, char* argv[]) {
   TFile out_file(argv[1], "recreate");
 
   //double nonhefty_soft_rate = compute_nonhefty_soft_rate();
+  compute_nonhefty_soft_rate();
 
   double nonhefty_efficiency = make_efficiency_plot(out_file);
 

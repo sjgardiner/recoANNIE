@@ -117,6 +117,31 @@ int main(int argc, char* argv[]) {
 
     }
 
+    // RWM
+    card_id = 21;
+    channel_id = 2;
+    for (const auto& pair : reco_readout->pulses().at(card_id).at(channel_id))
+    {
+      int minibuffer_id = pair.first;
+      const auto& rwm_pulses = pair.second;
+      std::cout << "Found " << rwm_pulses.size() << " pulses on RWM"
+        << " in minibuffer " << minibuffer_id << '\n';
+
+      for (const auto& pulse : rwm_pulses) {
+        tank_charge = reco_readout->tank_charge(minibuffer_id,
+          pulse.start_time(), pulse.start_time() + TANK_CHARGE_TIME_WINDOW,
+          num_unique_pmts);
+        std::cout << "  start time = " << pulse.start_time() << ", amp = "
+          << pulse.amplitude() << ", charge = " << pulse.charge()
+          << ", tank charge = " << tank_charge << " nC\n";
+        tank_charge_tree->Fill();
+
+        pulse_ptr = &pulse;
+        out_tree->Fill();
+      }
+
+    }
+
   }
 
   out_tree->Write();

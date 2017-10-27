@@ -256,7 +256,9 @@ std::unique_ptr<annie::RecoReadout> annie::RawAnalyzer::find_pulses(
       unsigned short adc_threshold = static_cast<unsigned short>(
         std::round(baseline) ) + 7; // baseline + roughly 4.1 mV
       if ( (card_id == 18 && channel_id == 0)
-        || (card_id == 4 && channel_id == 1) ) adc_threshold = 357; // Hefty
+        || (card_id == 4 && channel_id == 1) ) adc_threshold = 357u; // Hefty
+      // RWM signals are large square pulses
+      if ( card_id == 21 && channel_id == 2 ) adc_threshold = 2000u;
 
       // Search for pulses within minibuffers, not the full buffer in Hefty
       // mode

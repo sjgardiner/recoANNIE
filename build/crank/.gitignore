@@ -1,1 +1,4 @@
 crank
+*.pdf
+*.svg
+*.root
