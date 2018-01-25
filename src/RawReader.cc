@@ -13,23 +13,24 @@ namespace {
 }
 
 annie::RawReader::RawReader(const std::string& file_name)
-  : pmt_data_chain_("PMTData"), current_entry_(0)
+  : RawReader(std::vector<std::string>( { file_name } ))
 {
-  pmt_data_chain_.Add( file_name.c_str() );
-
-  set_branch_addresses();
 }
 
 annie::RawReader::RawReader(const std::vector<std::string>& file_names)
-  : pmt_data_chain_("PMTData"), current_entry_(0)
+  : pmt_data_chain_("PMTData"), trig_data_chain_("TrigData"),
+  current_pmt_data_entry_(0), current_trig_data_entry_(-1)
 {
-  for (const auto& file_name : file_names)
+  for (const auto& file_name : file_names) {
     pmt_data_chain_.Add( file_name.c_str() );
+    trig_data_chain_.Add( file_name.c_str() );
+  }
 
   set_branch_addresses();
 }
 
 void annie::RawReader::set_branch_addresses() {
+  // Set PMTData branch addresses
   pmt_data_chain_.SetBranchAddress("LastSync", &br_LastSync_);
   pmt_data_chain_.SetBranchAddress("SequenceID", &br_SequenceID_);
   pmt_data_chain_.SetBranchAddress("StartTimeSec", &br_StartTimeSec_);
@@ -41,9 +42,15 @@ void annie::RawReader::set_branch_addresses() {
   pmt_data_chain_.SetBranchAddress("BufferSize", &br_BufferSize_);
   pmt_data_chain_.SetBranchAddress("FullBufferSize", &br_FullBufferSize_);
   pmt_data_chain_.SetBranchAddress("Eventsize", &br_EventSize_);
-  std::vector<unsigned short> br_Data_; // [FullBufferSize]
-  std::vector<unsigned long long> br_TriggerCounts_; // [TriggerNumber]
-  std::vector<unsigned int> br_Rates_; // [Channels]
+
+  // Set TrigData branch addresses
+  trig_data_chain_.SetBranchAddress("FirmwareVersion", &br_FirmwareVersion_);
+  trig_data_chain_.SetBranchAddress("SequenceID", &br_TrigData_SequenceID_);
+  trig_data_chain_.SetBranchAddress("EventSize", &br_TrigData_EventSize_);
+  trig_data_chain_.SetBranchAddress("TriggerSize", &br_TriggerSize_);
+  trig_data_chain_.SetBranchAddress("FIFOOverflow", &br_FIFOOverflow_);
+  // Typo exists in the branch name definition in the DAQ software
+  trig_data_chain_.SetBranchAddress("DriverOverfow", &br_DriverOverflow_);
 }
 
 std::unique_ptr<annie::RawReadout> annie::RawReader::next() {
@@ -60,8 +67,12 @@ std::unique_ptr<annie::RawReadout> annie::RawReader::load_next_entry(
   int step = 1;
   if (reverse) {
     step = -1;
-    if (current_entry_ <= 0) return nullptr;
-    else --current_entry_;
+    if (current_pmt_data_entry_ <= 0 || current_trig_data_entry_ <= 0) {
+      return nullptr;
+    }
+    else {
+      --current_pmt_data_entry_;
+    }
   }
 
   auto raw_readout = std::make_unique<annie::RawReadout>();
@@ -69,6 +80,7 @@ std::unique_ptr<annie::RawReadout> annie::RawReader::load_next_entry(
   int first_sequence_id = BOGUS_INT;
   bool loaded_first_card = false;
 
+  ///// Load data from the PMTData tree /////
   // Loop indefinitely until the SequenceID changes (we've finished
   // loading a full DAQ readout) or we run out of TChain entries.
   while (true) {
@@ -77,7 +89,7 @@ std::unique_ptr<annie::RawReadout> annie::RawReader::load_next_entry(
     // that it owns) doesn't know about the other TTrees in the TChain.
     // If the return value is negative, there was an I/O error, or we've
     // attempted to read past the end of the TChain.
-    int local_entry = pmt_data_chain_.LoadTree(current_entry_);
+    int local_entry = pmt_data_chain_.LoadTree(current_pmt_data_entry_);
     if (local_entry < 0) {
       // If we've reached the end of the TChain (or encountered an I/O error)
       // without loading data from any of the VME cards, return a nullptr.
@@ -91,12 +103,12 @@ std::unique_ptr<annie::RawReadout> annie::RawReader::load_next_entry(
     // Load all of the branches except for the variable-length arrays, which
     // we handle separately below using the sizes obtained from this call
     // to TChain::GetEntry().
-    pmt_data_chain_.GetEntry(current_entry_);
+    pmt_data_chain_.GetEntry(current_pmt_data_entry_);
 
     // Continue iterating over the tree until we find a readout other
     // than the one that was last loaded
     if (br_SequenceID_ == last_sequence_id_) {
-      current_entry_ += step;
+      current_pmt_data_entry_ += step;
       continue;
     }
 
@@ -149,16 +161,82 @@ std::unique_ptr<annie::RawReadout> annie::RawReader::load_next_entry(
       br_Data_, br_TriggerCounts_, br_Rates_);
 
     // Move on to the next TChain entry
-    current_entry_ += step;
+    current_pmt_data_entry_ += step;
+  }
+
+  ///// Load data from the TrigData tree /////
+  ///
+  // TChain::LoadTree returns the entry number that should be used with
+  // the current TTree object, which (together with the TBranch objects
+  // that it owns) doesn't know about the other TTrees in the TChain.
+  // If the return value is negative, there was an I/O error, or we've
+  // attempted to read past the end of the TChain.
+  current_trig_data_entry_ += step;
+  int local_entry = trig_data_chain_.LoadTree(current_trig_data_entry_);
+  if (local_entry < 0) {
+    // If we've reached the end of the TChain (or encountered an I/O error)
+    // return a nullptr.
+    return nullptr;
+    // TODO: consider throwing an exception here instead
+  }
+
+  // Load all of the branches except for the variable-length arrays, which
+  // we handle separately below using the sizes obtained from this call
+  // to TChain::GetEntry().
+  trig_data_chain_.GetEntry(current_trig_data_entry_);
+
+  // Check that the variable-length array sizes are nonnegative. If one
+  // of them is negative, complain.
+  if (br_TrigData_EventSize_ < 0) throw std::runtime_error("Negative"
+    " EventSize value encountered in annie::RawReader::next()"
+    " while reading from the TrigData TTree");
+  if (br_TriggerSize_ < 0) throw std::runtime_error("Negative"
+    " TriggerSize value encountered in annie::RawReader::next()"
+    " while reading from the TrigData TTree");
+
+  // Check the variable-length array sizes and adjust the vector dimensions
+  // as needed before loading the corresponding branches.
+  size_t es_temp = static_cast<size_t>(br_TrigData_EventSize_);
+  if ( br_EventIDs_.size() != es_temp) br_EventIDs_.resize(es_temp);
+  if ( br_EventTimes_.size() != es_temp) br_EventTimes_.resize(es_temp);
+
+  size_t ts_temp = static_cast<size_t>(br_TriggerSize_);
+  if ( br_TriggerMasks_.size() != ts_temp) br_TriggerMasks_.resize(ts_temp);
+  if ( br_TriggerCounters_.size() != ts_temp)
+    br_TriggerCounters_.resize(ts_temp);
+
+  // Load the variable-length arrays from the current entry. The C++ standard
+  // guarantees that std::vector elements are stored contiguously in memory
+  // (something that is not true of std::deque elements), so we can use
+  // a pointer to the first element of each vector as each branch address.
+  TTree* temp_tree = trig_data_chain_.GetTree();
+  temp_tree->SetBranchAddress("EventIDs", br_EventIDs_.data());
+  temp_tree->SetBranchAddress("EventTimes", br_EventTimes_.data());
+  temp_tree->SetBranchAddress("TriggerMasks", br_TriggerMasks_.data());
+  temp_tree->SetBranchAddress("TriggerCounters", br_TriggerCounters_.data());
+
+  temp_tree->GetEntry(local_entry);
+
+  // Add the TrigData information to the incomplete RawReadout object
+  raw_readout->set_trig_data( annie::RawTrigData(br_FirmwareVersion_,
+    br_FIFOOverflow_, br_DriverOverflow_, br_EventIDs_, br_EventTimes_,
+    br_TriggerMasks_, br_TriggerCounters_) );
+
+  // Check that the TrigData tree's SequenceID matches that of the PMTData tree
+  // (if not, then we're loading data from two mismatched DAQ readouts!)
+  if ( br_TrigData_SequenceID_ != raw_readout->sequence_id() ) {
+    throw std::runtime_error("Mismatched TrigData ("
+      + std::to_string(br_TrigData_SequenceID_) + ") and PMTData ("
+      + std::to_string( raw_readout->sequence_id() ) + ") SequenceID values");
   }
 
   // Remember the SequenceID of the last raw readout to be successfully loaded
   last_sequence_id_ = raw_readout->sequence_id();
 
-  // Move forward by one if we loaded this readout in reverse (this ensures
-  // that we begin loading the next readout from the same place regardless
-  // of the preceding direction)
-  if (reverse) ++current_entry_;
+  // Move forward by one on the PMTData TChain if we loaded this readout in
+  // reverse (this ensures that we begin loading the next readout from the same
+  // place regardless of the preceding direction)
+  if (reverse) ++current_pmt_data_entry_;
 
   return raw_readout;
 }

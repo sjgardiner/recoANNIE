@@ -44,8 +44,13 @@ namespace annie {
       std::unique_ptr<RawReadout> load_next_entry(bool reverse);
 
       TChain pmt_data_chain_;
+      TChain trig_data_chain_;
 
-      long long current_entry_ = 0; // index of the current TChain entry
+      // index of the current PMTData TChain entry
+      long long current_pmt_data_entry_ = 0;
+
+      // index of the current TrigData TChain entry
+      long long current_trig_data_entry_ = 0;
 
       /// @brief SequenceID value for the last raw readout that was
       /// successfully loaded from the input file(s)
@@ -66,5 +71,17 @@ namespace annie {
       std::vector<unsigned short> br_Data_; // [FullBufferSize]
       std::vector<unsigned long long> br_TriggerCounts_; // [TriggerNumber]
       std::vector<unsigned int> br_Rates_; // [Channels]
+
+      // Variables used to read from each branch of the TrigData TChain
+      int br_FirmwareVersion_;
+      int br_TrigData_SequenceID_;
+      int br_TrigData_EventSize_;
+      int br_TriggerSize_;
+      int br_FIFOOverflow_;
+      int br_DriverOverflow_;
+      std::vector<unsigned short> br_EventIDs_; // [EventSize]
+      std::vector<unsigned long long> br_EventTimes_; // [EventSize]
+      std::vector<unsigned int> br_TriggerMasks_; // [TriggerSize]
+      std::vector<unsigned int> br_TriggerCounters_; // [TriggerSize]
   };
 }

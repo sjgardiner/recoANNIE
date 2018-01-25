@@ -11,6 +11,7 @@
 // reco-annie includes
 #include "annie/Constants.hh"
 #include "annie/RawCard.hh"
+#include "annie/RawTrigData.hh"
 
 namespace annie {
 
@@ -32,6 +33,7 @@ namespace annie {
 
       inline const std::map<int, annie::RawCard> cards() const
         { return cards_; }
+
       inline const annie::RawCard& card(int index) const
         { return cards_.at(index); }
 
@@ -40,6 +42,11 @@ namespace annie {
       {
         return cards_.at(card_index).channel(channel_index);
       }
+
+      inline const annie::RawTrigData& trig_data() const { return trig_data_; }
+
+      inline void set_trig_data(const annie::RawTrigData& TrigData)
+        { trig_data_ = TrigData; }
 
     protected:
 
@@ -51,5 +58,9 @@ namespace annie {
       /// @details Keys are VME card IDs, values are RawCard objects storing
       /// the associated data from the PMTData tree.
       std::map<int, annie::RawCard> cards_;
+
+      /// @brief Container holding the contents of the TrigData TTree for this
+      /// readout's SequenceID
+      annie::RawTrigData trig_data_;
   };
 }
